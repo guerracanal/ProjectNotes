@@ -1,0 +1,13 @@
+Este es un archivo de texto autogenerado por la aplicación.
+
+¿Para qué sirve?
+Cuando subes un vídeo a la carpeta del proyecto (por ejemplo `reunion_kickoff.mp4`) y pulsas el botón "Create Transcript" en la pestaña Meetings, la aplicación procesa el vídeo y genera automáticamente este archivo de texto.
+
+Nomenclatura:
+El nombre del archivo debe ser idéntico al del vídeo original, pero añadiendo el sufijo `_transcripcion.txt`. 
+Ejemplo: Si tu video es `mi_video.mp4`, el archivo generado será `mi_video_transcripcion.txt`.
+
+Visibilidad:
+En la pestaña Notes, hay un interruptor o "toggle" (que configuramos previamente) para poder ocultar o mostrar los archivos que terminan en `_transcripcion.txt` o `_transcripcion_resumen.txt`, para no saturar la vista de notas de trabajo.
+
+(Aquí normalmente verías todo el diálogo transcrito de la reunión con marcas de tiempo si estuviese configurado).

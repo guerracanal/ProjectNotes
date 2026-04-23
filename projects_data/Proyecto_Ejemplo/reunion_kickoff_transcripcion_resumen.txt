@@ -1,0 +1,16 @@
+# RESUMEN DE LA REUNIÓN (Autogenerado)
+
+¿Para qué sirve?
+Una vez que el vídeo ha sido transcrito (y existe su archivo `_transcripcion.txt`), en la pestaña Meetings aparecerá un botón "Generate Summary". Al pulsarlo, un script de Python resume la transcripción larga usando IA y genera este archivo.
+
+Nomenclatura:
+Debe llamarse igual que el archivo de video, terminando en `_transcripcion_resumen.txt`.
+Ejemplo: `reunion_kickoff_transcripcion_resumen.txt`
+
+Contenido típico:
+- Resumen ejecutivo.
+- Puntos principales tratados.
+- Decisiones tomadas.
+- Próximos pasos o Action Items.
+
+Este archivo aparecerá en la interfaz para poder leerlo rápidamente sin tener que ver el video completo o leer toda la transcripción cruda.
