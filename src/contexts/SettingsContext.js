@@ -7,7 +7,13 @@ const SettingsContext = createContext();
 export function SettingsProvider({ children }) {
     // Default settings
     const [settings, setSettings] = useState({
-        showMeetings: true
+        showMeetings: true,
+        gdriveClientId: '',
+        gdriveFolderName: 'ProjectNotes',
+        gdriveAutoSync: false,
+        gdriveAutoSyncInterval: 5,
+        gdriveLastSync: null,
+        gdriveSyncStats: null
     });
     const [loaded, setLoaded] = useState(false);
 

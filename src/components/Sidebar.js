@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSettings } from '@/contexts/SettingsContext';
+import GoogleDriveModal from './GoogleDriveModal';
 
 function TreeNode({ node, pathname, depth = 0, forceOpen = false }) {
   const [isNodeOpen, setIsNodeOpen] = useState(false);
@@ -192,6 +193,79 @@ export default function Sidebar() {
   const [parentFolder, setParentFolder] = useState('Cajon');
   const [isCreating, setIsCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  const [showGDriveModal, setShowGDriveModal] = useState(false);
+  const [isGDriveConnected, setIsGDriveConnected] = useState(false);
+
+  useEffect(() => {
+    const checkConnection = () => {
+      const token = sessionStorage.getItem('gdrive_access_token');
+      setIsGDriveConnected(!!token);
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Background Auto-Sync logic
+  useEffect(() => {
+    if (!settings.gdriveAutoSync) return;
+    const token = sessionStorage.getItem('gdrive_access_token');
+    if (!token) return;
+
+    const intervalMinutes = settings.gdriveAutoSyncInterval || 5;
+    const intervalMs = intervalMinutes * 60 * 1000;
+
+    const triggerAutoSync = async () => {
+      try {
+        console.log('Background Auto-Sync triggered...');
+        const response = await fetch('/api/sync/gdrive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accessToken: token,
+            folderName: settings.gdriveFolderName || 'ProjectNotes',
+            forceMode: 'two-way'
+          })
+        });
+        const data = await response.json();
+        if (data.success) {
+          console.log('Background Auto-Sync completed successfully:', data.stats);
+          
+          updateSettings({
+            gdriveLastSync: new Date().toISOString(),
+            gdriveSyncStats: data.stats
+          });
+
+          // Reload tree to reflect any new files pulled in the background
+          const treeResponse = await fetch('/api/tree');
+          const treeData = await treeResponse.json();
+          setTree(treeData.tree || []);
+        }
+      } catch (err) {
+        console.error('Error during background auto-sync:', err);
+      }
+    };
+
+    // Run first auto-sync after a short delay (e.g. 10 seconds)
+    const initialTimeout = setTimeout(triggerAutoSync, 10000);
+    const intervalId = setInterval(triggerAutoSync, intervalMs);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(intervalId);
+    };
+  }, [settings.gdriveAutoSync, settings.gdriveAutoSyncInterval, settings.gdriveFolderName]);
+
+  const handleSyncComplete = async () => {
+    try {
+      const treeResponse = await fetch('/api/tree');
+      const treeData = await treeResponse.json();
+      setTree(treeData.tree || []);
+    } catch (err) {
+      console.error('Error reloading tree after sync:', err);
+    }
+  };
 
   // Filter tree based on search term
   const filterTree = (nodes, term) => {
@@ -318,8 +392,18 @@ export default function Sidebar() {
             <button
               className={`nav-link settings-btn ${!settings.showMeetings ? 'muted' : ''}`}
               onClick={() => updateSettings({ showMeetings: !settings.showMeetings })}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
             >
-              {settings.showMeetings ? 'On' : 'Off'}
+              <span>🎥 Mostrar Reuniones</span>
+              <span>{settings.showMeetings ? 'ON' : 'OFF'}</span>
+            </button>
+            <button
+              className="nav-link settings-btn"
+              onClick={() => setShowGDriveModal(true)}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '0.5rem' }}
+            >
+              <span>☁️ Google Drive Sync</span>
+              <span className={`status-dot ${isGDriveConnected ? 'connected' : ''}`}></span>
             </button>
           </div>
 
@@ -415,6 +499,12 @@ export default function Sidebar() {
             </div>
           </div>
         )}
+
+        <GoogleDriveModal 
+          isOpen={showGDriveModal} 
+          onClose={() => setShowGDriveModal(false)} 
+          onSyncComplete={handleSyncComplete} 
+        />
 
         <style jsx global>{`
           :root {
@@ -576,6 +666,22 @@ export default function Sidebar() {
           .settings-btn.muted {
             opacity: 0.7;
             font-style: italic;
+          }
+
+          .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--text-secondary);
+            opacity: 0.5;
+            display: inline-block;
+            transition: all 0.3s ease;
+          }
+          
+          .status-dot.connected {
+            background-color: var(--success);
+            opacity: 1;
+            box-shadow: 0 0 6px var(--success);
           }
 
           .tree-root {
