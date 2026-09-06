@@ -2,60 +2,60 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Icon from './ui/Icon';
+import Modal from './ui/Modal';
+import ThemeToggle from './ThemeToggle';
+import GoogleDriveModal from './GoogleDriveModal';
+import KnowledgeStatus from './KnowledgeStatus';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSettings } from '@/contexts/SettingsContext';
-import GoogleDriveModal from './GoogleDriveModal';
+import { useToast } from '@/contexts/ToastContext';
 
-function TreeNode({ node, pathname, depth = 0, forceOpen = false }) {
-  const [isNodeOpen, setIsNodeOpen] = useState(false);
-  const hasChildren = node.children && node.children.length > 0;
-  const isActive = pathname === `/project/${node.path}`;
-  const isParent = depth === 0;
+const MAX_TINT_DEPTH = 5;
 
-  useEffect(() => {
-    if (forceOpen) {
-      setIsNodeOpen(true);
-    }
-  }, [forceOpen]);
+function TreeNode({ node, pathname, depth = 0, forceOpen = false, onNavigate }) {
+  // `null` means "no explicit choice yet", so the branch follows the search and
+  // the active route. A click pins it open or closed until the user says
+  // otherwise. Deriving this beats mirroring it into state from an effect.
+  const [manualOpen, setManualOpen] = useState(null);
+
+  const hasChildren = Boolean(node.children?.length);
+  const href = `/project/${node.path.split('/').map(encodeURIComponent).join('/')}`;
+  const isActive = decodeURIComponent(pathname) === `/project/${node.path}`;
+  const inPath = decodeURIComponent(pathname).startsWith(`/project/${node.path}/`);
+
+  const open = manualOpen ?? (forceOpen || inPath);
 
   return (
-    <li style={{ paddingLeft: depth === 0 ? 0 : '0.75rem' }}>
-      <div className={`tree-node depth-${depth} ${isParent ? 'parent' : ''} ${isActive ? 'active-node' : ''}`}>
+    <li className="tree-item">
+      <div className={`tree-row ${isActive ? 'active' : ''}`}>
         <button
-          className={`toggle-btn ${hasChildren ? 'visible' : 'hidden'}`}
+          className={`twisty ${hasChildren ? '' : 'invisible'}`}
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
-            setIsNodeOpen(!isNodeOpen);
+            setManualOpen(!open);
           }}
+          aria-label={open ? 'Contraer' : 'Expandir'}
+          aria-expanded={hasChildren ? open : undefined}
+          tabIndex={hasChildren ? 0 : -1}
         >
-          <span className={`arrow ${isNodeOpen ? 'open' : ''}`}>›</span>
+          <Icon name="chevron-right" size={13} className={open ? 'twisty-icon open' : 'twisty-icon'} />
         </button>
 
-        <Link
-          href={`/project/${node.path}`}
-          className={`node-link ${isActive ? 'active' : ''} ${isParent ? 'parent-link' : ''}`}
-          title={node.name}
-        >
+        <Link href={href} className="tree-link" title={node.path} onClick={onNavigate}>
           <span
-            className="node-icon"
-            style={{
-              color: `var(--folder-color-${Math.min(depth, 5)})`
-            }}
+            className="tree-icon"
+            style={{ color: `var(--depth-${Math.min(depth, MAX_TINT_DEPTH)})` }}
           >
-            {!hasChildren
-              ? '📘'
-              : depth === 0
-                ? '🗃️'
-                : depth === 1
-                  ? '📂'
-                  : '📁'}
+            <Icon name={hasChildren ? (open ? 'folder-open' : 'folder') : 'book'} size={15} />
           </span>
-          <span className="node-name">{node.name}</span>
+          <span className="truncate">{node.name}</span>
         </Link>
       </div>
 
-      {hasChildren && isNodeOpen && (
+      {hasChildren && open && (
         <ul className="tree-children">
           {node.children.map((child) => (
             <TreeNode
@@ -64,118 +64,90 @@ function TreeNode({ node, pathname, depth = 0, forceOpen = false }) {
               pathname={pathname}
               depth={depth + 1}
               forceOpen={forceOpen}
+              onNavigate={onNavigate}
             />
           ))}
         </ul>
       )}
+
       <style jsx>{`
-        li {
+        .tree-item {
+          list-style: none;
           position: relative;
         }
-        
-        /* Guide line for nesting */
-        li:before {
-          content: '';
-          position: absolute;
-          top: 0;
-          bottom: 0;
-          left: 0;
-          width: 1px;
-          background: var(--border-color);
-          opacity: 0.3;
-          display: ${depth > 0 ? 'block' : 'none'};
-        }
 
-        .tree-node {
+        .tree-row {
           display: flex;
           align-items: center;
-          gap: 0.25rem;
-          padding: 0.25rem 0;
-          border-radius: 4px;
-          transition: background-color 0.2s;
+          gap: 2px;
+          border-radius: var(--r-sm);
+          transition: background var(--dur-fast) var(--ease);
         }
 
-        .tree-node:hover {
-          background-color: var(--bg-tertiary);
-        }
-        
-        .tree-node.active-node {
-          background-color: rgba(99, 102, 241, 0.1);
+        .tree-row:hover {
+          background: var(--surface-hover);
         }
 
-        .toggle-btn {
-          background: none;
-          border: none;
-          color: var(--text-secondary);
-          cursor: pointer;
-          padding: 0;
-          width: 1.2rem;
-          height: 1.2rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .tree-row.active {
+          background: var(--accent-soft);
+        }
+
+        .tree-row.active :global(.tree-link) {
+          color: var(--accent);
+          font-weight: 600;
+        }
+
+        .twisty {
+          display: grid;
+          place-items: center;
+          width: 20px;
+          height: 28px;
           flex-shrink: 0;
-          transition: color 0.2s;
+          color: var(--text-subtle);
+          border-radius: var(--r-xs);
         }
-        
-        .toggle-btn.hidden {
+
+        .twisty.invisible {
           visibility: hidden;
         }
 
-        .toggle-btn:hover {
-          color: var(--text-primary);
+        .twisty:hover {
+          color: var(--text);
         }
 
-        .arrow {
-          display: inline-block;
-          font-size: 1.1rem;
-          line-height: 1;
-          transition: transform 0.2s ease;
-          transform-origin: center;
+        :global(.twisty-icon) {
+          transition: transform var(--dur) var(--ease-out);
         }
 
-        .arrow.open {
+        :global(.twisty-icon.open) {
           transform: rotate(90deg);
         }
 
-        .node-link {
+        :global(.tree-link) {
           display: flex;
           align-items: center;
-          gap: 0.4rem;
+          gap: var(--sp-2);
           flex: 1;
-          min-width: 0; /* Enable text truncation */
-          text-decoration: none;
-          color: var(--text-secondary);
-          font-size: 0.9rem;
-          padding: 0.1rem 0.25rem;
-          border-radius: 4px;
+          min-width: 0;
+          padding: 5px var(--sp-2) 5px 0;
+          font-size: var(--fs-sm);
+          color: var(--text-muted);
+          transition: color var(--dur-fast) var(--ease);
         }
 
-        .node-link:hover {
-          color: var(--text-primary);
+        :global(.tree-link):hover {
+          color: var(--text);
         }
 
-        .node-link.active {
-          color: var(--accent-primary);
-          font-weight: 500;
-        }
-        
-        .node-icon {
-          font-size: 1rem;
-          opacity: 0.8;
+        .tree-icon {
+          display: flex;
           flex-shrink: 0;
         }
 
-        .node-name {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
         .tree-children {
-          list-style: none;
-          padding-left: 0;
-          margin: 0;
+          margin-left: 10px;
+          padding-left: 9px;
+          border-left: 1px solid var(--border);
         }
       `}</style>
     </li>
@@ -184,679 +156,486 @@ function TreeNode({ node, pathname, depth = 0, forceOpen = false }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const toast = useToast();
+  const { isOpen, isMobile, close } = useSidebar();
+  const { settings, updateSettings } = useSettings();
+
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { isOpen, setIsOpen } = useSidebar();
-  const { settings, updateSettings } = useSettings();
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [parentFolder, setParentFolder] = useState('Cajon');
-  const [isCreating, setIsCreating] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  const [showGDriveModal, setShowGDriveModal] = useState(false);
-  const [isGDriveConnected, setIsGDriveConnected] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [showDrive, setShowDrive] = useState(false);
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [parent, setParent] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const loadTree = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tree');
+      const data = await res.json();
+      setTree(data.tree || []);
+    } catch (error) {
+      console.error('Error loading tree:', error);
+      toast.error('No se pudo cargar el árbol de proyectos');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
-    const checkConnection = () => {
-      const token = sessionStorage.getItem('gdrive_access_token');
-      setIsGDriveConnected(!!token);
+    loadTree();
+  }, [loadTree]);
+
+  // Reflect the Drive connection state without polling on a timer forever.
+  useEffect(() => {
+    const check = () => setDriveConnected(Boolean(sessionStorage.getItem('gdrive_access_token')));
+    check();
+    window.addEventListener('storage', check);
+    window.addEventListener('projectnotes:gdrive-auth', check);
+    return () => {
+      window.removeEventListener('storage', check);
+      window.removeEventListener('projectnotes:gdrive-auth', check);
     };
-    checkConnection();
-    const interval = setInterval(checkConnection, 2000);
-    return () => clearInterval(interval);
   }, []);
 
-  // Background Auto-Sync logic
+  // Background auto-sync, when the user has enabled it.
   useEffect(() => {
-    if (!settings.gdriveAutoSync) return;
+    if (!settings.gdriveAutoSync) return undefined;
     const token = sessionStorage.getItem('gdrive_access_token');
-    if (!token) return;
+    if (!token) return undefined;
 
-    const intervalMinutes = settings.gdriveAutoSyncInterval || 5;
-    const intervalMs = intervalMinutes * 60 * 1000;
+    const intervalMs = (settings.gdriveAutoSyncInterval || 5) * 60 * 1000;
 
-    const triggerAutoSync = async () => {
+    const sync = async () => {
       try {
-        console.log('Background Auto-Sync triggered...');
-        const response = await fetch('/api/sync/gdrive', {
+        const res = await fetch('/api/sync/gdrive', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            accessToken: token,
+            accessToken: sessionStorage.getItem('gdrive_access_token'),
             folderName: settings.gdriveFolderName || 'ProjectNotes',
-            forceMode: 'two-way'
-          })
+            forceMode: 'two-way',
+          }),
         });
-        const data = await response.json();
+        const data = await res.json();
         if (data.success) {
-          console.log('Background Auto-Sync completed successfully:', data.stats);
-          
           updateSettings({
             gdriveLastSync: new Date().toISOString(),
-            gdriveSyncStats: data.stats
+            gdriveSyncStats: data.stats,
           });
-
-          // Reload tree to reflect any new files pulled in the background
-          const treeResponse = await fetch('/api/tree');
-          const treeData = await treeResponse.json();
-          setTree(treeData.tree || []);
+          if (data.stats?.totalProcessed > 0) {
+            await loadTree();
+            // New files on disk mean the assistant's index is out of date.
+            fetch('/api/knowledge', { method: 'POST' }).catch(() => {});
+          }
         }
-      } catch (err) {
-        console.error('Error during background auto-sync:', err);
+      } catch (error) {
+        console.error('Auto-sync failed:', error);
       }
     };
 
-    // Run first auto-sync after a short delay (e.g. 10 seconds)
-    const initialTimeout = setTimeout(triggerAutoSync, 10000);
-    const intervalId = setInterval(triggerAutoSync, intervalMs);
-
+    const first = setTimeout(sync, 10_000);
+    const timer = setInterval(sync, intervalMs);
     return () => {
-      clearTimeout(initialTimeout);
-      clearInterval(intervalId);
+      clearTimeout(first);
+      clearInterval(timer);
     };
-  }, [settings.gdriveAutoSync, settings.gdriveAutoSyncInterval, settings.gdriveFolderName]);
+  }, [
+    settings.gdriveAutoSync,
+    settings.gdriveAutoSyncInterval,
+    settings.gdriveFolderName,
+    updateSettings,
+    loadTree,
+  ]);
 
-  const handleSyncComplete = async () => {
-    try {
-      const treeResponse = await fetch('/api/tree');
-      const treeData = await treeResponse.json();
-      setTree(treeData.tree || []);
-    } catch (err) {
-      console.error('Error reloading tree after sync:', err);
+  const filteredTree = useMemo(() => {
+    const term = filter.trim().toLowerCase();
+    if (!term) return tree;
+
+    const walk = (nodes) =>
+      nodes.reduce((acc, node) => {
+        const children = node.children ? walk(node.children) : [];
+        if (node.name.toLowerCase().includes(term) || children.length) {
+          acc.push({ ...node, children });
+        }
+        return acc;
+      }, []);
+
+    return walk(tree);
+  }, [tree, filter]);
+
+  const folderOptions = useMemo(() => {
+    const walk = (nodes, prefix = '') =>
+      (nodes || []).flatMap((node) => {
+        const full = prefix ? `${prefix}/${node.name}` : node.name;
+        return [full, ...walk(node.children, full)];
+      });
+    return ['', ...walk(tree)];
+  }, [tree]);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) {
+      toast.warning('Escribe un nombre para el proyecto');
+      return;
     }
-  };
-
-  // Filter tree based on search term
-  const filterTree = (nodes, term) => {
-    if (!term) return nodes;
-
-    return nodes.reduce((acc, node) => {
-      const matches = node.name.toLowerCase().includes(term.toLowerCase());
-      const filteredChildren = node.children ? filterTree(node.children, term) : [];
-
-      if (matches || filteredChildren.length > 0) {
-        acc.push({
-          ...node,
-          children: filteredChildren
-        });
-      }
-
-      return acc;
-    }, []);
-  };
-
-  const filteredTree = filterTree(tree, searchTerm);
-
-  // Flatten tree to get all folder paths for parent selection
-  const getAllFolders = (nodes, prefix = '') => {
-    let folders = [];
-    if (!nodes) return folders;
-
-    nodes.forEach(node => {
-      const fullPath = prefix ? `${prefix}/${node.name}` : node.name;
-      folders.push(fullPath);
-      if (node.children && node.children.length > 0) {
-        folders = folders.concat(getAllFolders(node.children, fullPath));
-      }
-    });
-    return folders;
-  };
-
-  const folderOptions = ['Cajon', ...getAllFolders(tree)];
-
-  const handleCreateProject = async () => {
-    if (!newProjectName.trim()) {
-      alert('Please enter a project name');
+    if (/[/\\]/.test(name)) {
+      toast.warning('El nombre no puede contener barras');
       return;
     }
 
-    setIsCreating(true);
+    setCreating(true);
     try {
-      const projectPath = parentFolder === 'Cajon'
-        ? newProjectName
-        : `${parentFolder}/${newProjectName}`;
-
-      const response = await fetch(`/api/projects/${parentFolder}`, {
+      const res = await fetch(`/api/projects/${parent.split('/').map(encodeURIComponent).join('/')}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create_folder',
-          name: newProjectName
-        })
+        body: JSON.stringify({ action: 'create_folder', name }),
       });
+      if (!res.ok) throw new Error((await res.json()).error || 'Error al crear el proyecto');
 
-      if (!response.ok) {
-        throw new Error('Failed to create project');
-      }
-
-      // Reload tree
-      const treeResponse = await fetch('/api/tree');
-      const treeData = await treeResponse.json();
-      setTree(treeData.tree || []);
-
-      // Reset and close modal
-      setNewProjectName('');
-      setParentFolder('Cajon');
-      setShowCreateModal(false);
-
-      alert('Project created successfully!');
+      await loadTree();
+      setNewName('');
+      setParent('');
+      setShowCreate(false);
+      toast.success(`Proyecto «${name}» creado`);
     } catch (error) {
-      console.error('Error creating project:', error);
-      alert('Error creating project: ' + error.message);
+      toast.error(error.message);
     } finally {
-      setIsCreating(false);
+      setCreating(false);
     }
   };
 
-  useEffect(() => {
-    fetch('/api/tree')
-      .then(res => res.json())
-      .then(data => {
-        setTree(data.tree || []);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Error loading tree:', err);
-        setLoading(false);
-      });
-  }, []);
-
   return (
     <>
-      <button
-        className="sidebar-toggle-btn"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Toggle sidebar"
-        title={isOpen ? 'Close sidebar' : 'Open sidebar'}
-      >
-        {isOpen ? '✕' : '☰'}
-      </button>
-
-      <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
-        <div className="logo">
-          <Link href="/">
-            <h2>ProjectNotes</h2>
+      <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`} aria-hidden={!isOpen}>
+        <div className="brand">
+          <Link href="/" className="brand-link">
+            <span className="brand-mark">
+              <Icon name="layers" size={17} />
+            </span>
+            <span className="brand-name">ProjectNotes</span>
           </Link>
+          {isMobile && (
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={close} aria-label="Cerrar menú">
+              <Icon name="x" size={16} />
+            </button>
+          )}
         </div>
 
-        <nav>
-          <div className="nav-section">
-            <Link href="/" className={`nav-link ${pathname === '/' ? 'active' : ''}`}>
-              🏠 Dashboard
+        <nav className="sidebar-scroll">
+          <div className="nav-group">
+            <Link
+              href="/"
+              className={`nav-link ${pathname === '/' ? 'active' : ''}`}
+              onClick={isMobile ? close : undefined}
+            >
+              <Icon name="home" size={16} />
+              <span>Panel</span>
             </Link>
           </div>
 
-          <div className="nav-section">
-            <h3 className="section-title">Ajustes</h3>
-            <button
-              className={`nav-link settings-btn ${!settings.showMeetings ? 'muted' : ''}`}
-              onClick={() => updateSettings({ showMeetings: !settings.showMeetings })}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
-            >
-              <span>🎥 Mostrar Reuniones</span>
-              <span>{settings.showMeetings ? 'ON' : 'OFF'}</span>
-            </button>
-            <button
-              className="nav-link settings-btn"
-              onClick={() => setShowGDriveModal(true)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '0.5rem' }}
-            >
-              <span>☁️ Google Drive Sync</span>
-              <span className={`status-dot ${isGDriveConnected ? 'connected' : ''}`}></span>
-            </button>
-          </div>
+          <div className="nav-group">
+            <div className="group-head">
+              <span className="group-title">Proyectos</span>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setShowCreate(true)}
+                aria-label="Nuevo proyecto"
+                title="Nuevo proyecto"
+              >
+                <Icon name="plus" size={15} />
+              </button>
+            </div>
 
-          <div className="nav-section">
-            <h3 className="section-title">Projects</h3>
-
-            {/* Search Input */}
-            <div className="search-container">
+            <div className="search-wrap" style={{ marginBottom: 'var(--sp-3)' }}>
+              <Icon name="search" size={15} />
               <input
-                type="text"
-                placeholder="🔍 Search projects..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-input"
+                type="search"
+                className="input input-search"
+                placeholder="Filtrar proyectos…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                aria-label="Filtrar proyectos"
               />
             </div>
 
             {loading ? (
-              <p className="loading">Loading...</p>
-            ) : (
+              <div className="tree-loading" aria-live="polite">
+                {[70, 55, 80, 45].map((w, i) => (
+                  <div key={i} className="skeleton skeleton-text" style={{ width: `${w}%` }} />
+                ))}
+              </div>
+            ) : filteredTree.length > 0 ? (
               <ul className="tree-root">
                 {filteredTree.map((node) => (
                   <TreeNode
                     key={node.path}
                     node={node}
                     pathname={pathname}
-                    forceOpen={!!searchTerm}
+                    forceOpen={Boolean(filter.trim())}
+                    onNavigate={isMobile ? close : undefined}
                   />
                 ))}
-                {filteredTree.length === 0 && searchTerm && (
-                  <p className="empty-search">No projects found.</p>
-                )}
               </ul>
+            ) : (
+              <p className="tree-empty">
+                {filter ? 'Ningún proyecto coincide.' : 'Aún no hay proyectos.'}
+              </p>
             )}
           </div>
         </nav>
 
         <div className="sidebar-footer">
+          <KnowledgeStatus />
+
           <button
-            className="create-project-btn"
-            onClick={() => setShowCreateModal(true)}
+            className={`nav-link toggle-row ${settings.showMeetings ? '' : 'muted'}`}
+            onClick={() => updateSettings({ showMeetings: !settings.showMeetings })}
+            aria-pressed={settings.showMeetings}
           >
-            + New Project
+            <Icon name="video" size={16} />
+            <span>Reuniones</span>
+            <span className="switch" data-on={String(settings.showMeetings)} />
+          </button>
+
+          <button className="nav-link toggle-row" onClick={() => setShowDrive(true)}>
+            <Icon name="cloud" size={16} />
+            <span>Google Drive</span>
+            <span className={`dot ${driveConnected ? 'on' : ''}`} title={driveConnected ? 'Conectado' : 'Sin conectar'} />
+          </button>
+
+          <ThemeToggle showLabel />
+
+          <button className="btn btn-primary btn-block" onClick={() => setShowCreate(true)}>
+            <Icon name="plus" size={16} />
+            Nuevo proyecto
           </button>
         </div>
-
-        {showCreateModal && (
-          <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Create New Project</h3>
-
-              <div className="form-group">
-                <label>Project Name:</label>
-                <input
-                  type="text"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="Enter project name..."
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Parent Folder:</label>
-                <select
-                  value={parentFolder}
-                  onChange={(e) => setParentFolder(e.target.value)}
-                >
-                  {folderOptions.map(folder => (
-                    <option key={folder} value={folder}>
-                      {folder}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  className="btn-cancel"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={isCreating}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn-create"
-                  onClick={handleCreateProject}
-                  disabled={isCreating}
-                >
-                  {isCreating ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <GoogleDriveModal 
-          isOpen={showGDriveModal} 
-          onClose={() => setShowGDriveModal(false)} 
-          onSyncComplete={handleSyncComplete} 
-        />
-
-        <style jsx global>{`
-          :root {
-            --folder-color-0: #6366f1; /* Indigo */
-            --folder-color-1: #10b981; /* Emerald */
-            --folder-color-2: #f59e0b; /* Amber */
-            --folder-color-3: #ec4899; /* Pink */
-            --folder-color-4: #8b5cf6; /* Violet */
-            --folder-color-5: #64748b; /* Slate */
-          }
-
-          .sidebar-toggle-btn {
-            position: fixed;
-            top: 1rem;
-            left: ${isOpen ? '210px' : '1rem'};
-            z-index: 1001;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            color: var(--text-primary);
-            font-size: 1.2rem;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-          }
-
-          .sidebar-toggle-btn:hover {
-            background: var(--bg-tertiary);
-            border-color: var(--accent-primary);
-            transform: scale(1.05);
-          }
-
-          @media (max-width: 768px) {
-            .sidebar-toggle-btn {
-              left: 1rem !important;
-            }
-          }
-        `}</style>
-
-        <style jsx>{`
-          .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100vh;
-            width: 250px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            padding: 1.5rem;
-            z-index: 1000;
-            transition: transform 0.3s ease;
-            display: flex;
-            flex-direction: column;
-          }
-
-          .sidebar.closed {
-            transform: translateX(-100%);
-          }
-
-          .sidebar.open {
-            transform: translateX(0);
-          }
-
-          @media (max-width: 768px) {
-            .sidebar {
-              width: 80%;
-              max-width: 300px;
-            }
-          }
-
-          .logo {
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-            flex-shrink: 0;
-          }
-
-          .logo h2 {
-            font-size: 1.3rem;
-            color: var(--accent-primary);
-            margin: 0;
-            cursor: pointer;
-            transition: color 0.2s;
-          }
-
-          .logo h2:hover {
-            color: var(--accent-secondary);
-          }
-
-          nav {
-            flex: 1;
-            overflow-y: auto;
-            min-height: 0; /* Crucial for nested flex scrolling */
-            padding-right: 0.5rem; /* Avoid scrollbar covering content */
-            margin-right: -0.5rem; /* Compensate padding */
-          }
-
-          /* Custom scrollbar for nav */
-          nav::-webkit-scrollbar {
-            width: 4px;
-          }
-          
-          nav::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          
-          nav::-webkit-scrollbar-thumb {
-            background: var(--bg-tertiary);
-            border-radius: 4px;
-          }
-
-          .nav-section {
-            margin-bottom: 2rem;
-          }
-
-          .section-title {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.75rem;
-            font-weight: 600;
-          }
-
-          .nav-link {
-            display: block;
-            padding: 0.75rem;
-            border-radius: 6px;
-            color: var(--text-secondary);
-            text-decoration: none;
-            transition: all 0.2s;
-            cursor: pointer;
-          }
-
-          .nav-link:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-          }
-
-          .nav-link.active {
-            background: var(--accent-primary);
-            color: white;
-            font-weight: 500;
-          }
-
-          .settings-btn {
-            width: 100%;
-            text-align: left;
-            background: transparent;
-            border: none;
-            font-size: 1rem; /* Match other links */
-          }
-          
-          .settings-btn.muted {
-            opacity: 0.7;
-            font-style: italic;
-          }
-
-          .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--text-secondary);
-            opacity: 0.5;
-            display: inline-block;
-            transition: all 0.3s ease;
-          }
-          
-          .status-dot.connected {
-            background-color: var(--success);
-            opacity: 1;
-            box-shadow: 0 0 6px var(--success);
-          }
-
-          .tree-root {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-          }
-
-          /* Removed global link styles to allow TreeNode component styles to work correctly */
-
-          .loading {
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-            padding: 0.5rem;
-          }
-
-          .sidebar-footer {
-            padding-top: 1rem;
-            border-top: 1px solid var(--border-color);
-            background: var(--bg-secondary);
-            flex-shrink: 0;
-            margin-top: auto; /* Push to bottom if content is short */
-          }
-
-          .create-project-btn {
-            width: 100%;
-            padding: 0.75rem;
-            background: var(--accent-primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 0.9rem;
-          }
-
-          .create-project-btn:hover {
-            background: var(--accent-secondary);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
-          }
-
-          .search-container {
-            margin-bottom: 1rem;
-          }
-
-          .search-input {
-            width: 100%;
-            padding: 0.6rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-            transition: all 0.2s;
-          }
-
-          .search-input:focus {
-            outline: none;
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
-          }
-
-          .empty-search {
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-            font-style: italic;
-            text-align: center;
-            padding: 1rem 0;
-          }
-
-          .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            backdrop-filter: blur(4px);
-          }
-
-          .modal-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 2rem;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-          }
-
-          .modal-content h3 {
-            margin: 0 0 1.5rem 0;
-            color: var(--text-primary);
-            font-size: 1.5rem;
-          }
-
-          .form-group {
-            margin-bottom: 1.5rem;
-          }
-
-          .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            font-weight: 500;
-          }
-
-          .form-group input,
-          .form-group select {
-            width: 100%;
-            padding: 0.75rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-size: 1rem;
-            transition: all 0.2s;
-          }
-
-          .form-group input:focus,
-          .form-group select:focus {
-            outline: none;
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-          }
-
-          .modal-actions {
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-            margin-top: 2rem;
-          }
-
-          .btn-cancel,
-          .btn-create {
-            padding: 0.75rem 1.5rem;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: none;
-            font-size: 0.95rem;
-          }
-
-          .btn-cancel {
-            background: var(--bg-tertiary);
-            color: var(--text-secondary);
-          }
-
-          .btn-cancel:hover:not(:disabled) {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-          }
-
-          .btn-create {
-            background: var(--accent-primary);
-            color: white;
-          }
-
-          .btn-create:hover:not(:disabled) {
-            background: var(--accent-secondary);
-            box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
-          }
-
-          .btn-cancel:disabled,
-          .btn-create:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-          }
-        `}</style>
       </aside>
+
+      <Modal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="Nuevo proyecto"
+        icon="folder"
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setShowCreate(false)} disabled={creating}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
+              {creating && <span className="spinner" />}
+              Crear
+            </button>
+          </>
+        }
+      >
+        <div className="field">
+          <label className="label" htmlFor="new-project-name">
+            Nombre
+          </label>
+          <input
+            id="new-project-name"
+            className="input"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            placeholder="Ej. Rediseño del portal"
+          />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="new-project-parent">
+            Carpeta contenedora
+          </label>
+          <select
+            id="new-project-parent"
+            className="select"
+            value={parent}
+            onChange={(e) => setParent(e.target.value)}
+          >
+            {folderOptions.map((folder) => (
+              <option key={folder || '__root__'} value={folder}>
+                {folder || 'Raíz'}
+              </option>
+            ))}
+          </select>
+        </div>
+      </Modal>
+
+      <GoogleDriveModal
+        isOpen={showDrive}
+        onClose={() => setShowDrive(false)}
+        onSyncComplete={loadTree}
+      />
+
+      <style jsx>{`
+        .sidebar {
+          position: fixed;
+          top: 0;
+          left: 0;
+          z-index: 999;
+          display: flex;
+          flex-direction: column;
+          width: var(--sidebar-w);
+          height: 100dvh;
+          padding-top: var(--safe-t);
+          padding-bottom: var(--safe-b);
+          background: var(--surface);
+          border-right: 1px solid var(--border);
+          transition: transform var(--dur-slow) var(--ease-out);
+        }
+
+        .sidebar.closed {
+          transform: translateX(-100%);
+        }
+
+        .brand {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--sp-2);
+          height: var(--topbar-h);
+          padding-inline: var(--sp-4);
+          border-bottom: 1px solid var(--border);
+          flex-shrink: 0;
+        }
+
+        :global(.brand-link) {
+          display: flex;
+          align-items: center;
+          gap: var(--sp-2);
+          min-width: 0;
+        }
+
+        .brand-mark {
+          display: grid;
+          place-items: center;
+          width: 28px;
+          height: 28px;
+          border-radius: var(--r-sm);
+          background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+          color: #fff;
+          flex-shrink: 0;
+          box-shadow: var(--shadow-xs);
+        }
+
+        .brand-name {
+          font-size: var(--fs-md);
+          font-weight: 650;
+          letter-spacing: -0.015em;
+        }
+
+        .sidebar-scroll {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          padding: var(--sp-4) var(--sp-3);
+        }
+
+        .nav-group + .nav-group {
+          margin-top: var(--sp-5);
+        }
+
+        .group-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-inline: var(--sp-2);
+          margin-bottom: var(--sp-2);
+        }
+
+        .group-title {
+          font-size: var(--fs-2xs);
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--text-subtle);
+        }
+
+        :global(.nav-link) {
+          display: flex;
+          align-items: center;
+          gap: var(--sp-3);
+          width: 100%;
+          padding: var(--sp-2) var(--sp-3);
+          border-radius: var(--r-md);
+          color: var(--text-muted);
+          font-size: var(--fs-sm);
+          font-weight: 500;
+          text-align: left;
+          transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+        }
+
+        :global(.nav-link):hover {
+          background: var(--surface-hover);
+          color: var(--text);
+        }
+
+        :global(.nav-link).active {
+          background: var(--accent-soft);
+          color: var(--accent);
+          font-weight: 600;
+        }
+
+        .toggle-row span:not(.switch):not(.dot) {
+          flex: 1;
+        }
+
+        .toggle-row.muted {
+          opacity: 0.65;
+        }
+
+        .dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--border-strong);
+          flex-shrink: 0;
+        }
+
+        .dot.on {
+          background: var(--success);
+          box-shadow: 0 0 0 3px var(--success-soft);
+        }
+
+        .tree-root {
+          list-style: none;
+        }
+
+        .tree-loading {
+          padding-inline: var(--sp-2);
+        }
+
+        .tree-empty {
+          padding: var(--sp-3) var(--sp-2);
+          font-size: var(--fs-sm);
+          color: var(--text-subtle);
+        }
+
+        .sidebar-footer {
+          display: flex;
+          flex-direction: column;
+          gap: var(--sp-1);
+          flex-shrink: 0;
+          padding: var(--sp-3);
+          border-top: 1px solid var(--border);
+          background: var(--surface-2);
+        }
+
+        .sidebar-footer :global(.btn-block) {
+          margin-top: var(--sp-2);
+        }
+
+        @media (max-width: 899px) {
+          .sidebar {
+            width: min(84vw, 320px);
+            box-shadow: var(--shadow-lg);
+            /* Clear the fixed bottom navigation bar. */
+            padding-bottom: calc(var(--safe-b) + 56px);
+          }
+        }
+      `}</style>
     </>
   );
 }

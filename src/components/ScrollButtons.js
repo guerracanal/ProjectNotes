@@ -1,147 +1,81 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import Icon from './ui/Icon';
 
+/** Floating "back to top" affordance for long note and transcript pages. */
 export default function ScrollButtons() {
-    const [showScrollTop, setShowScrollTop] = useState(false);
-    const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [visible, setVisible] = useState(false);
 
-    useEffect(() => {
-        const handleScroll = () => {
-            const scrollY = window.scrollY;
-            const windowHeight = window.innerHeight;
-            const documentHeight = document.documentElement.scrollHeight;
+  useEffect(() => {
+    let frame = null;
 
-            // Show "scroll to top" when scrolled down more than 300px
-            setShowScrollTop(scrollY > 300);
-
-            // Show "scroll to bottom" when not near the bottom (more than 300px from bottom)
-            setShowScrollBottom(scrollY < documentHeight - windowHeight - 300);
-        };
-
-        // Initial check
-        handleScroll();
-
-        // Add scroll listener
-        window.addEventListener('scroll', handleScroll);
-
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    const scrollToTop = () => {
-        window.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        });
+    const onScroll = () => {
+      if (frame) return;
+      // Coalesce to one read per frame — scroll fires far faster than paint.
+      frame = requestAnimationFrame(() => {
+        setVisible(window.scrollY > 420);
+        frame = null;
+      });
     };
 
-    const scrollToBottom = () => {
-        window.scrollTo({
-            top: document.documentElement.scrollHeight,
-            behavior: 'smooth'
-        });
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
     };
+  }, []);
 
-    return (
-        <>
-            {/* Scroll to Top Button */}
-            <button
-                className={`scroll-btn scroll-top ${showScrollTop ? 'visible' : ''}`}
-                onClick={scrollToTop}
-                aria-label="Scroll to top"
-                title="Scroll to top"
-            >
-                ↑
-            </button>
+  return (
+    <button
+      className={`scroll-top ${visible ? 'visible' : ''}`}
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      aria-label="Volver arriba"
+      tabIndex={visible ? 0 : -1}
+    >
+      <Icon name="arrow-up" size={18} />
 
-            {/* Scroll to Bottom Button */}
-            <button
-                className={`scroll-btn scroll-bottom ${showScrollBottom ? 'visible' : ''}`}
-                onClick={scrollToBottom}
-                aria-label="Scroll to bottom"
-                title="Scroll to bottom"
-            >
-                ↓
-            </button>
+      <style jsx>{`
+        .scroll-top {
+          position: fixed;
+          right: var(--sp-5);
+          bottom: calc(var(--sp-5) + var(--safe-b));
+          z-index: 900;
+          display: grid;
+          place-items: center;
+          width: 42px;
+          height: 42px;
+          border: 1px solid var(--border);
+          border-radius: 50%;
+          background: var(--surface);
+          color: var(--text-muted);
+          box-shadow: var(--shadow-md);
+          opacity: 0;
+          transform: translateY(12px) scale(0.9);
+          pointer-events: none;
+          transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease-out),
+            color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+        }
 
-            <style jsx>{`
-                .scroll-btn {
-                    position: fixed;
-                    right: 2rem;
-                    width: 48px;
-                    height: 48px;
-                    background: var(--accent-primary);
-                    border: none;
-                    border-radius: 50%;
-                    color: white;
-                    font-size: 1.5rem;
-                    font-weight: bold;
-                    cursor: pointer;
-                    opacity: 0;
-                    visibility: hidden;
-                    transform: scale(0.8);
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-                    z-index: 9000;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                }
+        .scroll-top.visible {
+          opacity: 1;
+          transform: none;
+          pointer-events: auto;
+        }
 
-                .scroll-btn.visible {
-                    opacity: 1;
-                    visibility: visible;
-                    transform: scale(1);
-                }
+        .scroll-top:hover {
+          color: var(--accent);
+          border-color: var(--accent);
+        }
 
-                .scroll-btn:hover {
-                    background: var(--accent-secondary);
-                    transform: scale(1.1);
-                    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-                }
-
-                .scroll-btn:active {
-                    transform: scale(0.95);
-                }
-
-                .scroll-top {
-                    bottom: 8rem;
-                }
-
-                .scroll-bottom {
-                    bottom: 4rem;
-                }
-
-                /* Mobile adjustments */
-                @media (max-width: 768px) {
-                    .scroll-btn {
-                        right: 1rem;
-                        width: 44px;
-                        height: 44px;
-                        font-size: 1.3rem;
-                    }
-
-                    .scroll-top {
-                        bottom: 7rem;
-                    }
-
-                    .scroll-bottom {
-                        bottom: 3.5rem;
-                    }
-                }
-
-                /* Animation for smoother transitions */
-                @keyframes fadeInScale {
-                    from {
-                        opacity: 0;
-                        transform: scale(0.8);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: scale(1);
-                    }
-                }
-            `}</style>
-        </>
-    );
+        @media (max-width: 899px) {
+          .scroll-top {
+            right: var(--sp-3);
+            bottom: calc(var(--sp-3) + var(--safe-b) + 64px);
+          }
+        }
+      `}</style>
+    </button>
+  );
 }

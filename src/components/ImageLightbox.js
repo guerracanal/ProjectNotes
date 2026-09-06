@@ -1,262 +1,206 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import Icon from './ui/Icon';
 
+function encodePath(path) {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
+/** Full-screen image viewer with keyboard and swipe navigation. */
 export default function ImageLightbox({ images, currentIndex, onClose, onNavigate }) {
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape') {
-                onClose();
-            } else if (e.key === 'ArrowLeft') {
-                handlePrevious();
-            } else if (e.key === 'ArrowRight') {
-                handleNext();
-            }
-        };
+  const touchStart = useRef(null);
 
-        document.addEventListener('keydown', handleKeyDown);
-        // Prevenir scroll del body cuando el lightbox está abierto
-        document.body.style.overflow = 'hidden';
+  const go = useCallback(
+    (delta) => {
+      const next = (currentIndex + delta + images.length) % images.length;
+      onNavigate(next);
+    },
+    [currentIndex, images.length, onNavigate]
+  );
 
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.body.style.overflow = 'unset';
-        };
-    }, [currentIndex]);
-
-    const handlePrevious = () => {
-        if (currentIndex > 0) {
-            onNavigate(currentIndex - 1);
-        } else {
-            // Loop to last image
-            onNavigate(images.length - 1);
-        }
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft') go(-1);
+      else if (e.key === 'ArrowRight') go(1);
     };
 
-    const handleNext = () => {
-        if (currentIndex < images.length - 1) {
-            onNavigate(currentIndex + 1);
-        } else {
-            // Loop to first image
-            onNavigate(0);
-        }
+    document.addEventListener('keydown', onKeyDown);
+    const { overflow } = document.body.style;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = overflow;
     };
+  }, [go, onClose]);
 
-    const currentImage = images[currentIndex];
+  const image = images[currentIndex];
+  if (!image || typeof document === 'undefined') return null;
 
-    return (
-        <div className="lightbox-overlay" onClick={onClose}>
-            <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-                {/* Close button */}
-                <button className="lightbox-close" onClick={onClose} aria-label="Close">
-                    ✕
-                </button>
+  return createPortal(
+    <div
+      className="lb-overlay"
+      onClick={onClose}
+      onTouchStart={(e) => {
+        touchStart.current = e.touches[0].clientX;
+      }}
+      onTouchEnd={(e) => {
+        if (touchStart.current === null) return;
+        const delta = e.changedTouches[0].clientX - touchStart.current;
+        // 60px keeps a deliberate swipe from being confused with a tap.
+        if (Math.abs(delta) > 60) go(delta > 0 ? -1 : 1);
+        touchStart.current = null;
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={image.name}
+    >
+      <button className="lb-close" onClick={onClose} aria-label="Cerrar">
+        <Icon name="x" size={20} />
+      </button>
 
-                {/* Navigation buttons */}
-                {images.length > 1 && (
-                    <>
-                        <button
-                            className="lightbox-nav lightbox-nav-prev"
-                            onClick={handlePrevious}
-                            aria-label="Previous image"
-                        >
-                            ‹
-                        </button>
-                        <button
-                            className="lightbox-nav lightbox-nav-next"
-                            onClick={handleNext}
-                            aria-label="Next image"
-                        >
-                            ›
-                        </button>
-                    </>
-                )}
+      {images.length > 1 && (
+        <>
+          <button
+            className="lb-nav prev"
+            onClick={(e) => {
+              e.stopPropagation();
+              go(-1);
+            }}
+            aria-label="Imagen anterior"
+          >
+            <Icon name="chevron-left" size={22} />
+          </button>
+          <button
+            className="lb-nav next"
+            onClick={(e) => {
+              e.stopPropagation();
+              go(1);
+            }}
+            aria-label="Imagen siguiente"
+          >
+            <Icon name="chevron-right" size={22} />
+          </button>
+        </>
+      )}
 
-                {/* Image */}
-                <div className="lightbox-image-container">
-                    <img
-                        src={`/api/projects/${currentImage.path}?type=file`}
-                        alt={currentImage.name}
-                        className="lightbox-image"
-                    />
-                </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        className="lb-image"
+        src={`/api/projects/${encodePath(image.path)}?type=file`}
+        alt={image.name}
+        onClick={(e) => e.stopPropagation()}
+      />
 
-                {/* Info bar */}
-                <div className="lightbox-info">
-                    <span className="lightbox-name">{currentImage.name}</span>
-                    <span className="lightbox-counter">
-                        {currentIndex + 1} / {images.length}
-                    </span>
-                </div>
-            </div>
+      <div className="lb-info" onClick={(e) => e.stopPropagation()}>
+        <span className="truncate">{image.name}</span>
+        <span className="lb-counter">
+          {currentIndex + 1} / {images.length}
+        </span>
+        <a
+          className="btn btn-ghost btn-icon btn-sm"
+          href={`/api/projects/${encodePath(image.path)}?type=file`}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Abrir en una pestaña"
+        >
+          <Icon name="external" size={15} />
+        </a>
+      </div>
 
-            <style jsx>{`
-                .lightbox-overlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(0, 0, 0, 0.95);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 9999;
-                    animation: fadeIn 0.2s ease;
-                }
+      <style jsx>{`
+        .lb-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 4500;
+          display: grid;
+          place-items: center;
+          padding: var(--sp-6);
+          background: rgba(4, 5, 10, 0.92);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          animation: fade-in var(--dur) var(--ease-out);
+        }
 
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                }
+        .lb-image {
+          max-width: 100%;
+          max-height: calc(100dvh - 140px);
+          object-fit: contain;
+          border-radius: var(--r-md);
+          box-shadow: var(--shadow-lg);
+          animation: scale-in var(--dur) var(--ease-out);
+        }
 
-                .lightbox-content {
-                    position: relative;
-                    width: 90vw;
-                    height: 90vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-direction: column;
-                }
+        .lb-close {
+          position: absolute;
+          top: calc(var(--sp-4) + var(--safe-t));
+          right: var(--sp-4);
+          display: grid;
+          place-items: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.1);
+          color: #fff;
+          transition: background var(--dur-fast) var(--ease);
+        }
 
-                .lightbox-close {
-                    position: absolute;
-                    top: 1rem;
-                    right: 1rem;
-                    background: rgba(0, 0, 0, 0.7);
-                    border: none;
-                    color: white;
-                    font-size: 2rem;
-                    width: 3rem;
-                    height: 3rem;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.2s;
-                    z-index: 10;
-                    line-height: 1;
-                }
+        .lb-close:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
 
-                .lightbox-close:hover {
-                    background: rgba(255, 255, 255, 0.2);
-                    transform: scale(1.1);
-                }
+        .lb-nav {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          display: grid;
+          place-items: center;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.1);
+          color: #fff;
+          transition: background var(--dur-fast) var(--ease);
+        }
 
-                .lightbox-nav {
-                    position: absolute;
-                    top: 50%;
-                    transform: translateY(-50%);
-                    background: rgba(0, 0, 0, 0.7);
-                    border: none;
-                    color: white;
-                    font-size: 3rem;
-                    width: 4rem;
-                    height: 4rem;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.2s;
-                    z-index: 10;
-                    line-height: 1;
-                }
+        .lb-nav:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
 
-                .lightbox-nav:hover {
-                    background: rgba(255, 255, 255, 0.2);
-                    transform: translateY(-50%) scale(1.1);
-                }
+        .lb-nav.prev { left: var(--sp-4); }
+        .lb-nav.next { right: var(--sp-4); }
 
-                .lightbox-nav-prev {
-                    left: 2rem;
-                }
+        .lb-info {
+          position: absolute;
+          bottom: calc(var(--sp-4) + var(--safe-b));
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: var(--sp-3);
+          max-width: calc(100vw - var(--sp-8));
+          padding: var(--sp-2) var(--sp-3);
+          border-radius: var(--r-full);
+          background: rgba(255, 255, 255, 0.1);
+          color: #fff;
+          font-size: var(--fs-xs);
+        }
 
-                .lightbox-nav-next {
-                    right: 2rem;
-                }
+        .lb-counter {
+          font-variant-numeric: tabular-nums;
+          opacity: 0.7;
+          flex-shrink: 0;
+        }
 
-                .lightbox-image-container {
-                    flex: 1;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 100%;
-                    padding: 4rem 2rem 1rem 2rem;
-                }
-
-                .lightbox-image {
-                    max-width: 100%;
-                    max-height: 100%;
-                    object-fit: contain;
-                    animation: zoomIn 0.3s ease;
-                    border-radius: 8px;
-                }
-
-                @keyframes zoomIn {
-                    from {
-                        opacity: 0;
-                        transform: scale(0.9);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: scale(1);
-                    }
-                }
-
-                .lightbox-info {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    width: 100%;
-                    padding: 1rem 2rem;
-                    background: rgba(0, 0, 0, 0.7);
-                    backdrop-filter: blur(10px);
-                    border-radius: 8px;
-                    margin-top: 1rem;
-                }
-
-                .lightbox-name {
-                    color: white;
-                    font-size: 1rem;
-                    font-weight: 500;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                    flex: 1;
-                    margin-right: 1rem;
-                }
-
-                .lightbox-counter {
-                    color: rgba(255, 255, 255, 0.7);
-                    font-size: 0.9rem;
-                    white-space: nowrap;
-                }
-
-                @media (max-width: 768px) {
-                    .lightbox-nav {
-                        width: 3rem;
-                        height: 3rem;
-                        font-size: 2rem;
-                    }
-
-                    .lightbox-nav-prev {
-                        left: 1rem;
-                    }
-
-                    .lightbox-nav-next {
-                        right: 1rem;
-                    }
-
-                    .lightbox-close {
-                        width: 2.5rem;
-                        height: 2.5rem;
-                        font-size: 1.5rem;
-                    }
-                }
-            `}</style>
-        </div>
-    );
+        @media (max-width: 640px) {
+          .lb-overlay { padding: var(--sp-2); }
+          .lb-nav { display: none; }
+        }
+      `}</style>
+    </div>,
+    document.body
+  );
 }

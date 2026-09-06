@@ -1,150 +1,215 @@
+import fs from 'fs';
 import { NextResponse } from 'next/server';
-import { getDirectoryContent, getFileContent, saveFile, createFolder, getImagesInDirectory } from '@/lib/fs-utils';
+import {
+    classifyFile,
+    createFolder,
+    deleteEntry,
+    extensionOf,
+    getDirectoryContent,
+    getFileContent,
+    getImagesInDirectory,
+    getSafePath,
+    renameEntry,
+    saveFile,
+    statFile,
+} from '@/lib/fs-utils';
+import { invalidateIndex } from '@/lib/knowledge/store';
+
+const MIME_TYPES = {
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mkv': 'video/x-matroska',
+    '.mov': 'video/quicktime',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.m4a': 'audio/mp4',
+    '.ogg': 'audio/ogg',
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.txt': 'text/plain; charset=utf-8',
+    '.md': 'text/plain; charset=utf-8',
+    '.csv': 'text/csv; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.avif': 'image/avif',
+    '.bmp': 'image/bmp',
+    '.svg': 'image/svg+xml',
+};
+
+function resolveSubpath(resolvedParams) {
+    return (resolvedParams?.path || []).map((segment) => decodeURIComponent(segment)).join('/');
+}
+
+function badPath(error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+}
+
+/** Stream a binary file, honouring HTTP range requests so video can seek. */
+function streamFile(fullPath, contentType, rangeHeader) {
+    const fileSize = fs.statSync(fullPath).size;
+
+    if (rangeHeader) {
+        const [startRaw, endRaw] = rangeHeader.replace(/bytes=/, '').split('-');
+        const start = parseInt(startRaw, 10) || 0;
+        const end = endRaw ? parseInt(endRaw, 10) : fileSize - 1;
+
+        if (start >= fileSize || end >= fileSize || start > end) {
+            return new NextResponse(null, {
+                status: 416,
+                headers: { 'Content-Range': `bytes */${fileSize}` },
+            });
+        }
+
+        return new NextResponse(fs.createReadStream(fullPath, { start, end }), {
+            status: 206,
+            headers: {
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': String(end - start + 1),
+                'Content-Type': contentType,
+            },
+        });
+    }
+
+    return new NextResponse(fs.createReadStream(fullPath), {
+        headers: {
+            'Content-Length': String(fileSize),
+            'Content-Type': contentType,
+            'Content-Disposition': 'inline',
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'private, max-age=60',
+        },
+    });
+}
 
 export async function GET(request, { params }) {
-    const resolvedParams = await params;
-    // params.path is an array of path segments
-    // If params is undefined or path is undefined, it's the root
-    const pathSegments = (resolvedParams?.path || []).map(segment => decodeURIComponent(segment));
-    const subpath = pathSegments.join('/');
+    const subpath = resolveSubpath(await params);
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get('type');
+
+    let fullPath;
+    try {
+        fullPath = getSafePath(subpath);
+    } catch (error) {
+        return badPath(error);
+    }
 
     try {
-        // Check if we are requesting a specific file content (e.g. via query param or extension check)
-        // For now, let's assume GET on a folder returns list, GET on a file returns content?
-        // Or maybe we use a query param ?type=content
-
-        const { searchParams } = new URL(request.url);
-        const type = searchParams.get('type');
-
         if (type === 'file') {
-            const fullPath = await import('path').then(p => p.join(process.cwd(), 'projects_data', subpath));
-            // Check if file exists
-            try {
-                await import('fs/promises').then(fs => fs.stat(fullPath));
-            } catch (e) {
+            const stat = await statFile(subpath);
+            if (!stat || stat.isDirectory) {
                 return NextResponse.json({ error: 'File not found' }, { status: 404 });
             }
 
-            // Determine content type
-            let contentType = 'application/octet-stream';
-            if (subpath.endsWith('.mp4')) contentType = 'video/mp4';
-            else if (subpath.endsWith('.webm')) contentType = 'video/webm';
-            else if (subpath.endsWith('.mkv')) contentType = 'video/x-matroska';
-            else if (subpath.endsWith('.pdf')) contentType = 'application/pdf';
-            else if (subpath.endsWith('.doc')) contentType = 'application/msword';
-            else if (subpath.endsWith('.docx')) contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-            else if (subpath.endsWith('.txt') || subpath.endsWith('.md')) contentType = 'text/plain; charset=utf-8';
-            else if (subpath.endsWith('.jpg') || subpath.endsWith('.jpeg')) contentType = 'image/jpeg';
-            else if (subpath.endsWith('.png')) contentType = 'image/png';
-            else if (subpath.endsWith('.gif')) contentType = 'image/gif';
-            else if (subpath.endsWith('.webp')) contentType = 'image/webp';
-            else if (subpath.endsWith('.bmp')) contentType = 'image/bmp';
-            else if (subpath.endsWith('.svg')) contentType = 'image/svg+xml';
+            const kind = classifyFile(subpath);
+            const contentType = MIME_TYPES[extensionOf(subpath)] || 'application/octet-stream';
 
-
-            // For binary files (videos, PDFs, docs, images), we MUST stream
-            // For binary files (videos, PDFs, docs, images), we MUST stream
-            if (contentType.startsWith('video/') ||
-                contentType.startsWith('image/') ||
-                contentType === 'application/pdf' ||
-                contentType === 'application/msword' ||
-                contentType.includes('wordprocessingml')) {
-
-                const fs = await import('fs');
-                const { stat } = await import('fs/promises');
-                const fileStat = await stat(fullPath);
-                const fileSize = fileStat.size;
-                const range = request.headers.get('range');
-
-                if (range) {
-                    const parts = range.replace(/bytes=/, "").split("-");
-                    const start = parseInt(parts[0], 10);
-                    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-                    const chunksize = (end - start) + 1;
-                    const file = fs.createReadStream(fullPath, { start, end });
-
-                    return new NextResponse(file, {
-                        status: 206,
-                        headers: {
-                            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-                            'Accept-Ranges': 'bytes',
-                            'Content-Length': chunksize,
-                            'Content-Type': contentType,
-                        }
-                    });
-                } else {
-                    const file = fs.createReadStream(fullPath);
-                    return new NextResponse(file, {
-                        headers: {
-                            'Content-Length': fileSize,
-                            'Content-Type': contentType,
-                            'Content-Disposition': 'inline',
-                            'Accept-Ranges': 'bytes'
-                        }
-                    });
-                }
+            if (kind === 'video' || kind === 'image' || kind === 'audio' || kind === 'document') {
+                return streamFile(fullPath, contentType, request.headers.get('range'));
             }
 
-            // For text files, read as string
             const content = await getFileContent(subpath);
-            return NextResponse.json({ content });
+            return NextResponse.json({ content, size: stat.size, mtime: stat.mtime });
         }
 
         if (type === 'list') {
-            // List images in the project's images directory
-            // subpath includes "/images" but getImagesInDirectory adds it internally
-            // so we need to remove it first
             const projectPath = subpath.endsWith('/images') ? subpath.slice(0, -7) : subpath;
             const images = await getImagesInDirectory(projectPath);
             return NextResponse.json({ images });
         }
 
         const items = await getDirectoryContent(subpath);
+        if (items === null) {
+            return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
+        }
         return NextResponse.json({ items });
     } catch (error) {
+        console.error('GET /api/projects failed:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
 export async function POST(request, { params }) {
-    const resolvedParams = await params;
-    const pathSegments = (resolvedParams?.path || []).map(segment => decodeURIComponent(segment));
-    const subpath = pathSegments.join('/');
+    const subpath = resolveSubpath(await params);
 
     try {
         const body = await request.json();
         const { action, name, content } = body;
 
-        if (action === 'create_folder') {
-            await createFolder(`${subpath}/${name}`);
-            return NextResponse.json({ success: true });
-        } else if (action === 'save_file') {
-            await saveFile(`${subpath}/${name}`, content);
-            return NextResponse.json({ success: true });
+        if (!name || typeof name !== 'string' || name.includes('/') || name.includes('\\')) {
+            return NextResponse.json({ error: 'A valid file or folder name is required' }, { status: 400 });
         }
 
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+        const target = subpath ? `${subpath}/${name}` : name;
+
+        if (action === 'create_folder') {
+            await createFolder(target);
+        } else if (action === 'save_file') {
+            await saveFile(target, content ?? '');
+            invalidateIndex();
+        } else {
+            return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+        }
+
+        return NextResponse.json({ success: true, path: target });
     } catch (error) {
+        if (error.message.startsWith('Invalid path')) return badPath(error);
+        console.error('POST /api/projects failed:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
 export async function PUT(request, { params }) {
-    const resolvedParams = await params;
-    const pathSegments = (resolvedParams?.path || []).map(segment => decodeURIComponent(segment));
-    const subpath = pathSegments.join('/');
+    const subpath = resolveSubpath(await params);
 
     try {
-        const body = await request.json();
-        const { content } = body;
+        const { content, renameTo } = await request.json();
+
+        if (renameTo) {
+            await renameEntry(subpath, renameTo);
+            invalidateIndex();
+            return NextResponse.json({ success: true, path: renameTo });
+        }
 
         if (content === undefined) {
             return NextResponse.json({ error: 'Content is required' }, { status: 400 });
         }
 
         await saveFile(subpath, content);
+        invalidateIndex();
         return NextResponse.json({ success: true });
     } catch (error) {
+        if (error.message.startsWith('Invalid path')) return badPath(error);
+        console.error('PUT /api/projects failed:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
+export async function DELETE(request, { params }) {
+    const subpath = resolveSubpath(await params);
+
+    if (!subpath) {
+        return NextResponse.json({ error: 'Refusing to delete the projects root' }, { status: 400 });
+    }
+
+    try {
+        await deleteEntry(subpath);
+        invalidateIndex();
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        if (error.message.startsWith('Invalid path') || error.message.startsWith('Refusing')) {
+            return badPath(error);
+        }
+        console.error('DELETE /api/projects failed:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

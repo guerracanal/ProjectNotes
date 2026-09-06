@@ -1,38 +1,70 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-const SidebarContext = createContext();
+const SidebarContext = createContext(null);
+const STORAGE_KEY = 'projectnotes:sidebar-open';
+const MOBILE_BREAKPOINT = 900;
 
 export function SidebarProvider({ children }) {
-    const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
-    // Auto-hide on mobile
-    useEffect(() => {
-        const handleResize = () => {
-            if (window.innerWidth < 768) {
-                setIsOpen(false);
-            } else {
-                setIsOpen(true);
-            }
-        };
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
 
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+    const apply = (matches) => {
+      setIsMobile(matches);
+      if (matches) {
+        // On phones the sidebar is an overlay drawer: start closed.
+        setIsOpen(false);
+      } else {
+        let stored = null;
+        try {
+          stored = localStorage.getItem(STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        setIsOpen(stored === null ? true : stored === 'true');
+      }
+    };
 
-    return (
-        <SidebarContext.Provider value={{ isOpen, setIsOpen }}>
-            {children}
-        </SidebarContext.Provider>
-    );
+    apply(mq.matches);
+    const onChange = (e) => apply(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const setOpen = useCallback(
+    (next) => {
+      setIsOpen((prev) => {
+        const value = typeof next === 'function' ? next(prev) : next;
+        if (!isMobile) {
+          try {
+            localStorage.setItem(STORAGE_KEY, String(value));
+          } catch {
+            /* ignore */
+          }
+        }
+        return value;
+      });
+    },
+    [isMobile]
+  );
+
+  const toggle = useCallback(() => setOpen((v) => !v), [setOpen]);
+  const close = useCallback(() => setOpen(false), [setOpen]);
+
+  const value = useMemo(
+    () => ({ isOpen, isMobile, setIsOpen: setOpen, toggle, close }),
+    [isOpen, isMobile, setOpen, toggle, close]
+  );
+
+  return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;
 }
 
 export function useSidebar() {
-    const context = useContext(SidebarContext);
-    if (!context) {
-        throw new Error('useSidebar must be used within SidebarProvider');
-    }
-    return context;
+  const ctx = useContext(SidebarContext);
+  if (!ctx) throw new Error('useSidebar must be used within SidebarProvider');
+  return ctx;
 }

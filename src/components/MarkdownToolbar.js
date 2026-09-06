@@ -120,74 +120,76 @@ export default function MarkdownToolbar({ textareaRef, onUpdate }) {
     };
 
     return (
-        <div className="markdown-toolbar">
-            <div className="toolbar-group">
-                <button onClick={() => insertText('# ')} title="Heading 1">H1</button>
-                <button onClick={() => insertText('## ')} title="Heading 2">H2</button>
-                <button onClick={() => insertText('### ')} title="Heading 3">H3</button>
+        <div className="markdown-toolbar no-scrollbar">
+            <div className="tb-group">
+                <button onClick={() => insertText('# ')} title="Encabezado 1">H1</button>
+                <button onClick={() => insertText('## ')} title="Encabezado 2">H2</button>
+                <button onClick={() => insertText('### ')} title="Encabezado 3">H3</button>
             </div>
 
-            <div className="toolbar-group">
-                <button onClick={() => insertText('**', '**')} title="Bold">B</button>
-                <button onClick={() => insertText('*', '*')} title="Italic">I</button>
-                <button onClick={() => insertText('`', '`')} title="Inline Code">{'<>'}</button>
+            <div className="tb-group">
+                <button onClick={() => insertText('**', '**')} title="Negrita" style={{ fontWeight: 800 }}>B</button>
+                <button onClick={() => insertText('*', '*')} title="Cursiva" style={{ fontStyle: 'italic' }}>I</button>
+                <button onClick={() => insertText('`', '`')} title="Código en línea" className="mono">{'<>'}</button>
             </div>
 
-            <div className="toolbar-group">
-                <button onClick={() => insertList('ul')} title="Bullet List">• List</button>
-                <button onClick={() => insertList('ol')} title="Numbered List">1. List</button>
-                <button onClick={() => insertText('- [ ] ')} title="Checklist">☑ List</button>
-                <button onClick={indentLines} title="Indent (Add 2 spaces)">⇥ Indent</button>
-                <button onClick={unindentLines} title="Unindent (Remove 2 spaces)">⇤ Unindent</button>
+            <div className="tb-group">
+                <button onClick={() => insertList('ul')} title="Lista con viñetas">• Lista</button>
+                <button onClick={() => insertList('ol')} title="Lista numerada">1. Lista</button>
+                <button onClick={() => insertText('- [ ] ')} title="Lista de tareas">☑ Tareas</button>
+                <button onClick={indentLines} title="Aumentar sangría">⇥</button>
+                <button onClick={unindentLines} title="Reducir sangría">⇤</button>
             </div>
 
-            <div className="toolbar-group">
-                <button onClick={() => insertText('```\n', '\n```')} title="Code Block">Code Block</button>
-                <button onClick={insertTable} title="Table">Table</button>
-                <button onClick={() => insertText('[Link Text](url)')} title="Link">Link</button>
-                <button onClick={() => insertText('![Alt Text](url)')} title="Image">Image</button>
+            <div className="tb-group">
+                <button onClick={() => insertText('```\n', '\n```')} title="Bloque de código">Código</button>
+                <button onClick={insertTable} title="Tabla">Tabla</button>
+                <button onClick={() => insertText('[texto](url)')} title="Enlace">Enlace</button>
+                <button onClick={() => insertText('![alt](url)')} title="Imagen">Imagen</button>
+                <button onClick={() => insertText('> ')} title="Cita">Cita</button>
             </div>
 
             <style jsx>{`
-        .markdown-toolbar {
-          display: flex;
-          gap: 1rem;
-          padding: 0.5rem;
-          background: var(--bg-tertiary);
-          border-bottom: 1px solid var(--border-color);
-          border-radius: 8px 8px 0 0;
-          flex-wrap: wrap;
-        }
+                .markdown-toolbar {
+                    display: flex;
+                    gap: var(--sp-3);
+                    padding: var(--sp-2) var(--sp-3);
+                    background: var(--surface-2);
+                    border-bottom: 1px solid var(--border);
+                    overflow-x: auto;
+                    flex-shrink: 0;
+                }
 
-        .toolbar-group {
-          display: flex;
-          gap: 0.25rem;
-          padding-right: 1rem;
-          border-right: 1px solid var(--border-color);
-        }
+                .tb-group {
+                    display: flex;
+                    gap: 2px;
+                    padding-right: var(--sp-3);
+                    border-right: 1px solid var(--border);
+                    flex-shrink: 0;
+                }
 
-        .toolbar-group:last-child {
-          border-right: none;
-        }
+                .tb-group:last-of-type {
+                    border-right: none;
+                    padding-right: 0;
+                }
 
-        button {
-          background: transparent;
-          border: 1px solid transparent;
-          color: var(--text-secondary);
-          padding: 0.25rem 0.5rem;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 0.85rem;
-          font-weight: 500;
-          transition: all 0.2s;
-        }
+                button {
+                    min-width: 28px;
+                    height: 28px;
+                    padding-inline: var(--sp-2);
+                    border-radius: var(--r-sm);
+                    color: var(--text-muted);
+                    font-size: var(--fs-xs);
+                    font-weight: 600;
+                    white-space: nowrap;
+                    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+                }
 
-        button:hover {
-          background: var(--bg-secondary);
-          color: var(--text-primary);
-          border-color: var(--border-color);
-        }
-      `}</style>
+                button:hover {
+                    background: var(--surface-hover);
+                    color: var(--accent);
+                }
+            `}</style>
         </div>
     );
 }

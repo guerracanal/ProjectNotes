@@ -1,58 +1,80 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-const SettingsContext = createContext();
+const SettingsContext = createContext(null);
+const STORAGE_KEY = 'project_notes_settings';
+
+export const DEFAULT_SETTINGS = {
+  // Content
+  showMeetings: true,
+  showTranscriptsInNotes: false,
+  projectsView: 'grid', // 'grid' | 'table'
+  density: 'comfortable', // 'comfortable' | 'compact'
+
+  // Assistant
+  assistantScope: 'all', // 'all' | 'project'
+  assistantTopK: 8,
+
+  // Google Drive
+  gdriveClientId: '',
+  gdriveFolderName: 'ProjectNotes',
+  gdriveAutoSync: false,
+  gdriveAutoSyncInterval: 5,
+  gdriveLastSync: null,
+  gdriveSyncStats: null,
+};
 
 export function SettingsProvider({ children }) {
-    // Default settings
-    const [settings, setSettings] = useState({
-        showMeetings: true,
-        gdriveClientId: '',
-        gdriveFolderName: 'ProjectNotes',
-        gdriveAutoSync: false,
-        gdriveAutoSyncInterval: 5,
-        gdriveLastSync: null,
-        gdriveSyncStats: null
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        // Merge over the defaults so a setting added in a later release is
+        // present even for users with an older stored blob.
+        setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(saved) });
+      }
+    } catch (e) {
+      console.error('Error loading settings:', e);
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  const updateSettings = useCallback((patch) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        console.error('Error saving settings:', e);
+      }
+      return next;
     });
-    const [loaded, setLoaded] = useState(false);
+  }, []);
 
-    // Load from localStorage on mount
-    useEffect(() => {
-        try {
-            const savedSettings = localStorage.getItem('project_notes_settings');
-            if (savedSettings) {
-                setSettings(JSON.parse(savedSettings));
-            }
-        } catch (e) {
-            console.error('Error loading settings:', e);
-        } finally {
-            setLoaded(true);
-        }
-    }, []);
+  const resetSettings = useCallback(() => {
+    setSettings(DEFAULT_SETTINGS);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
-    // Save to localStorage on change
-    const updateSettings = (newSettings) => {
-        const updated = { ...settings, ...newSettings };
-        setSettings(updated);
-        try {
-            localStorage.setItem('project_notes_settings', JSON.stringify(updated));
-        } catch (e) {
-            console.error('Error saving settings:', e);
-        }
-    };
+  const value = useMemo(
+    () => ({ settings, updateSettings, resetSettings, loaded }),
+    [settings, updateSettings, resetSettings, loaded]
+  );
 
-    return (
-        <SettingsContext.Provider value={{ settings, updateSettings, loaded }}>
-            {children}
-        </SettingsContext.Provider>
-    );
+  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 
 export function useSettings() {
-    const context = useContext(SettingsContext);
-    if (!context) {
-        throw new Error('useSettings must be used within SettingsProvider');
-    }
-    return context;
+  const ctx = useContext(SettingsContext);
+  if (!ctx) throw new Error('useSettings must be used within SettingsProvider');
+  return ctx;
 }

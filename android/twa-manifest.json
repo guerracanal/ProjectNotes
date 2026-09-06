@@ -1,0 +1,48 @@
+{
+  "packageId": "com.projectnotes.twa",
+  "host": "REPLACE_WITH_YOUR_DOMAIN",
+  "name": "ProjectNotes",
+  "launcherName": "ProjectNotes",
+  "display": "standalone",
+  "themeColor": "#0a0b12",
+  "themeColorDark": "#0a0b12",
+  "navigationColor": "#0a0b12",
+  "navigationColorDark": "#0a0b12",
+  "navigationDividerColor": "#262a38",
+  "navigationDividerColorDark": "#262a38",
+  "backgroundColor": "#0a0b12",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://REPLACE_WITH_YOUR_DOMAIN/icons/icon-512.png",
+  "maskableIconUrl": "https://REPLACE_WITH_YOUR_DOMAIN/icons/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "android/android.keystore",
+    "alias": "projectnotes"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Panel",
+      "shortName": "Panel",
+      "url": "/",
+      "chosenIconUrl": "https://REPLACE_WITH_YOUR_DOMAIN/icons/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://REPLACE_WITH_YOUR_DOMAIN/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://REPLACE_WITH_YOUR_DOMAIN/",
+  "minSdkVersion": 23,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.0.0"
+}

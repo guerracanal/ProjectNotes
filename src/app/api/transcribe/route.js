@@ -1,12 +1,10 @@
-import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import path from 'path';
+import { NextResponse } from 'next/server';
+import { getSafePath, statFile } from '@/lib/fs-utils';
+import { createJob, getJob, updateJob } from '@/lib/job-store';
+import { runPythonScript } from '@/lib/run-script';
 
-const execAsync = promisify(exec);
-
-// In-memory job store (resets on server restart)
-const jobs = new Map();
+const SCRIPT = path.join(process.cwd(), 'scripts', 'transcribir_video.py');
 
 export async function POST(request) {
     try {
@@ -16,45 +14,39 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Video path is required' }, { status: 400 });
         }
 
-        // Generate job ID
-        const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        // Confine the argument to projects_data before it reaches the script.
+        let fullVideoPath;
+        try {
+            fullVideoPath = getSafePath(videoPath);
+        } catch {
+            return NextResponse.json({ error: 'Invalid video path' }, { status: 400 });
+        }
 
-        // Full path to video
-        const fullVideoPath = path.join(process.cwd(), 'projects_data', videoPath);
+        const stat = await statFile(videoPath);
+        if (!stat || stat.isDirectory) {
+            return NextResponse.json({ error: 'Video not found' }, { status: 404 });
+        }
 
-        // Script path
-        const scriptPath = path.join(process.cwd(), 'scripts', 'transcribir_video.py');
+        const jobId = createJob('transcribe', { videoPath });
 
-        // Initialize job
-        jobs.set(jobId, {
-            status: 'pending',
-            videoPath,
-            startTime: new Date(),
-            error: null
-        });
-
-        // Execute script in background
+        // Fire and forget: the client polls GET /api/transcribe?jobId=...
         (async () => {
+            updateJob(jobId, { status: 'running' });
             try {
-                jobs.set(jobId, { ...jobs.get(jobId), status: 'running' });
-
-                // Use venv Python interpreter
-                const pythonPath = path.join(process.cwd(), 'venv', 'bin', 'python3');
-                const { stdout, stderr } = await execAsync(`"${pythonPath}" "${scriptPath}" "${fullVideoPath}"`);
-
-                jobs.set(jobId, {
-                    ...jobs.get(jobId),
+                const { stdout, stderr } = await runPythonScript(SCRIPT, [fullVideoPath]);
+                updateJob(jobId, {
                     status: 'completed',
-                    endTime: new Date(),
+                    endTime: new Date().toISOString(),
                     stdout,
-                    stderr
+                    stderr,
                 });
             } catch (error) {
-                jobs.set(jobId, {
-                    ...jobs.get(jobId),
+                updateJob(jobId, {
                     status: 'error',
-                    endTime: new Date(),
-                    error: error.message
+                    endTime: new Date().toISOString(),
+                    error: error.message,
+                    stdout: error.stdout || '',
+                    stderr: error.stderr || '',
                 });
             }
         })();
@@ -74,20 +66,10 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Job ID is required' }, { status: 400 });
     }
 
-    const job = jobs.get(jobId);
-
+    const job = getJob(jobId);
     if (!job) {
         return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-        jobId,
-        status: job.status,
-        videoPath: job.videoPath,
-        startTime: job.startTime,
-        endTime: job.endTime,
-        error: job.error,
-        stdout: job.stdout || '',
-        stderr: job.stderr || ''
-    });
+    return NextResponse.json(job);
 }

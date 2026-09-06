@@ -1,521 +1,305 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Modal from './ui/Modal';
+import Icon from './ui/Icon';
 
+const POLL_MS = 2000;
+
+const STATUS_LABEL = {
+  idle: 'Sin iniciar',
+  pending: 'En cola',
+  running: 'Procesando',
+  completed: 'Completado',
+  error: 'Error',
+};
+
+function StatusPill({ status }) {
+  const tone =
+    status === 'completed' ? 'success' : status === 'error' ? 'danger' : status === 'idle' ? '' : 'warning';
+  return (
+    <span className={`badge ${tone ? `badge-${tone}` : ''}`}>
+      {status === 'running' || status === 'pending' ? (
+        <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} />
+      ) : (
+        <Icon
+          name={status === 'completed' ? 'check-circle' : status === 'error' ? 'alert-circle' : 'clock'}
+          size={11}
+        />
+      )}
+      {STATUS_LABEL[status] || status}
+    </span>
+  );
+}
+
+/**
+ * Drives the two Python pipelines (Whisper transcription, Gemini summary) and
+ * streams their console output back into the UI.
+ *
+ * Both jobs are polled rather than pushed: the scripts are long-running child
+ * processes, and polling keeps the server free of per-client connections.
+ */
 export default function TranscriptModal({ meeting, projectPath, mode = 'transcript', onClose }) {
-  const [transcriptJobId, setTranscriptJobId] = useState(null);
-  const [summaryJobId, setSummaryJobId] = useState(null);
-  const [transcriptStatus, setTranscriptStatus] = useState(null);
-  const [summaryStatus, setSummaryStatus] = useState(null);
-  const [error, setError] = useState(null);
-  const [mounted, setMounted] = useState(false);
-  const [transcriptLogs, setTranscriptLogs] = useState('');
-  const [summaryLogs, setSummaryLogs] = useState('');
+  const router = useRouter();
   const logsEndRef = useRef(null);
-
-  useEffect(() => {
-    setMounted(true);
-    // Bloquear scroll del body cuando el modal está abierto
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      setMounted(false);
-      // Restaurar scroll del body cuando el modal se cierra
-      document.body.style.overflow = 'unset';
-    };
-  }, []);
-
-  useEffect(() => {
-    // Auto-scroll logs to bottom
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcriptLogs, summaryLogs]);
-
-  // Auto-start summarization if mode is 'summary'
-  useEffect(() => {
-    if (mode === 'summary' && mounted && !summaryJobId) {
-      startSummarization();
-    }
-  }, [mode, mounted]);
-
-  const startTranscription = async () => {
-    try {
-      setError(null);
-      setTranscriptLogs('Iniciando transcripción...\n');
-      const response = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPath: meeting.path })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start transcription');
-      }
-
-      const data = await response.json();
-      setTranscriptJobId(data.jobId);
-      setTranscriptStatus('pending');
-      pollTranscriptStatus(data.jobId);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const pollTranscriptStatus = async (jobId) => {
-    const checkStatus = async () => {
-      try {
-        const response = await fetch(`/api/transcribe?jobId=${jobId}`);
-        const data = await response.json();
-
-        setTranscriptStatus(data.status);
-
-        // Update logs
-        if (data.stdout || data.stderr) {
-          const combinedLogs = `${data.stdout || ''}${data.stderr || ''}`;
-          setTranscriptLogs(combinedLogs);
-        }
-
-        if (data.status === 'completed') {
-          setTranscriptLogs(prev => prev + '\n✅ Transcripción completada exitosamente');
-          return;
-        } else if (data.status === 'error') {
-          setError(data.error || 'Transcription failed');
-          setTranscriptLogs(prev => prev + `\n❌ Error: ${data.error || 'Transcription failed'}`);
-          return;
-        } else {
-          // Continue polling
-          setTimeout(checkStatus, 2000);
-        }
-      } catch (e) {
-        setError(e.message);
-      }
-    };
-
-    checkStatus();
-  };
-
-  const startSummarization = async () => {
-    try {
-      setError(null);
-      setSummaryLogs('Iniciando generación de resumen...\n');
-      const transcriptPath = `${projectPath}/${meeting.baseName}_transcripcion.txt`;
-
-      const response = await fetch('/api/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcriptPath })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start summarization');
-      }
-
-      const data = await response.json();
-      setSummaryJobId(data.jobId);
-      setSummaryStatus('pending');
-      pollSummaryStatus(data.jobId);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const pollSummaryStatus = async (jobId) => {
-    const checkStatus = async () => {
-      try {
-        const response = await fetch(`/api/summarize?jobId=${jobId}`);
-        const data = await response.json();
-
-        setSummaryStatus(data.status);
-
-        // Update logs
-        if (data.stdout || data.stderr) {
-          const combinedLogs = `${data.stdout || ''}${data.stderr || ''}`;
-          setSummaryLogs(combinedLogs);
-        }
-
-        if (data.status === 'completed') {
-          setSummaryLogs(prev => prev + '\n✅ Resumen generado exitosamente');
-          return;
-        } else if (data.status === 'error') {
-          setError(data.error || 'Summarization failed');
-          setSummaryLogs(prev => prev + `\n❌ Error: ${data.error || 'Summarization failed'}`);
-          return;
-        } else {
-          // Continue polling
-          setTimeout(checkStatus, 2000);
-        }
-      } catch (e) {
-        setError(e.message);
-      }
-    };
-
-    checkStatus();
-  };
-
-  const handleRefresh = () => {
-    window.location.reload();
-  };
-
-  if (!mounted) return null;
-
-  const currentLogs = summaryJobId ? summaryLogs : transcriptLogs;
-  const showLogs = transcriptJobId || summaryJobId;
-
-  const modalContent = (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{mode === 'summary' ? 'Summary Generation' : 'Transcript Generation'}</h2>
-          <button className="close-btn" onClick={onClose}>✕</button>
-        </div>
-
-        <div className="modal-body">
-          <p className="meeting-name">{meeting.baseName}</p>
-
-          {error && (
-            <div className="error-message">
-              ⚠️ {error}
-            </div>
-          )}
-
-          {!transcriptJobId && mode !== 'summary' && (
-            <div className="action-section">
-              <p>Generate transcript for this meeting video?</p>
-              <button className="btn btn-primary" onClick={startTranscription}>
-                Start Transcription
-              </button>
-            </div>
-          )}
-
-          {transcriptJobId && (
-            <div className="status-section">
-              <h3>Transcription Status</h3>
-              <div className={`status-badge status-${transcriptStatus}`}>
-                {transcriptStatus === 'pending' && '⏳ Queued...'}
-                {transcriptStatus === 'running' && '▶️ Processing...'}
-                {transcriptStatus === 'completed' && '✅ Completed'}
-                {transcriptStatus === 'error' && '❌ Failed'}
-              </div>
-            </div>
-          )}
-
-          {transcriptStatus === 'completed' && !summaryJobId && (
-            <div className="action-section">
-              <p>Transcript generated successfully! Generate summary?</p>
-              <button className="btn btn-primary" onClick={startSummarization}>
-                Generate Summary
-              </button>
-            </div>
-          )}
-
-          {summaryJobId && (
-            <div className="status-section">
-              <h3>Summary Status</h3>
-              <div className={`status-badge status-${summaryStatus}`}>
-                {summaryStatus === 'pending' && '⏳ Queued...'}
-                {summaryStatus === 'running' && '▶️ Processing...'}
-                {summaryStatus === 'completed' && '✅ Completed'}
-                {summaryStatus === 'error' && '❌ Failed'}
-              </div>
-            </div>
-          )}
-
-          {showLogs && (
-            <div className="logs-section">
-              <h3>Process Logs</h3>
-              <div className="logs-container">
-                <pre className="logs-content">{currentLogs}</pre>
-                <div ref={logsEndRef} />
-              </div>
-            </div>
-          )}
-
-          {summaryStatus === 'completed' && (
-            <div className="action-section">
-              <p>✅ Summary generated successfully!</p>
-              <button className="btn btn-primary" onClick={handleRefresh}>
-                Refresh Page
-              </button>
-            </div>
-          )}
-        </div>
-
-        <style jsx>{`
-          .modal-overlay {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            background: rgba(0, 0, 0, 0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2147483647;
-            backdrop-filter: blur(8px);
-            padding: 1rem;
-            overflow-y: auto;
-            animation: fadeIn 0.2s ease-out;
-            margin: 0 !important;
-            inset: 0 !important;
-          }
-
-          @keyframes fadeIn {
-            from {
-              opacity: 0;
-            }
-            to {
-              opacity: 1;
-            }
-          }
-
-          @keyframes slideIn {
-            from {
-              transform: translateY(-20px);
-              opacity: 0;
-            }
-            to {
-              transform: translateY(0);
-              opacity: 1;
-            }
-          }
-
-          .modal-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            max-width: 700px;
-            width: 100%;
-            max-height: 85vh;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 25px 75px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
-            position: relative;
-            overflow: hidden;
-            margin: auto;
-            animation: slideIn 0.3s ease-out;
-          }
-
-          .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--border-color);
-            flex-shrink: 0;
-            background: var(--bg-secondary);
-            position: sticky;
-            top: 0;
-            z-index: 10;
-          }
-
-          .modal-header h2 {
-            color: var(--text-primary);
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin: 0;
-          }
-
-          .close-btn {
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0;
-            width: 2rem;
-            height: 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            border-radius: 8px;
-          }
-
-          .close-btn:hover {
-            color: var(--text-primary);
-            background: rgba(255, 255, 255, 0.1);
-            transform: scale(1.1);
-          }
-
-          .modal-body {
-            padding: 1.5rem;
-            overflow-y: auto;
-            flex: 1;
-          }
-
-          .meeting-name {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            margin-bottom: 1.5rem;
-            font-family: monospace;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-          }
-
-          .action-section, .status-section {
-            margin: 1.5rem 0;
-          }
-
-          .status-section h3 {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-bottom: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 600;
-          }
-
-          .status-badge {
-            padding: 0.75rem 1rem;
-            border-radius: 10px;
-            font-weight: 500;
-            text-align: center;
-            font-size: 0.95rem;
-            animation: slideIn 0.3s ease-out;
-          }
-
-          .status-pending, .status-running {
-            background: rgba(255, 193, 7, 0.15);
-            color: #ffc107;
-            border: 1px solid rgba(255, 193, 7, 0.3);
-          }
-
-          .status-running {
-            animation: pulse 2s ease-in-out infinite;
-          }
-
-          @keyframes pulse {
-            0%, 100% {
-              opacity: 1;
-            }
-            50% {
-              opacity: 0.7;
-            }
-          }
-
-          .status-completed {
-            background: rgba(76, 175, 80, 0.15);
-            color: #4caf50;
-            border: 1px solid rgba(76, 175, 80, 0.3);
-          }
-
-          .status-error {
-            background: rgba(244, 67, 54, 0.15);
-            color: #f44336;
-            border: 1px solid rgba(244, 67, 54, 0.3);
-          }
-
-          .error-message {
-            background: rgba(244, 67, 54, 0.15);
-            color: #f44336;
-            padding: 1rem;
-            border-radius: 10px;
-            margin-bottom: 1rem;
-            border: 1px solid rgba(244, 67, 54, 0.3);
-            animation: slideIn 0.3s ease-out;
-          }
-
-          .action-section p {
-            color: var(--text-primary);
-            margin-bottom: 1rem;
-            font-size: 0.95rem;
-          }
-
-          .logs-section {
-            margin: 1.5rem 0;
-          }
-
-          .logs-section h3 {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-bottom: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 600;
-          }
-
-          .logs-container {
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 1rem;
-            max-height: 300px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-          }
-
-          .logs-content {
-            margin: 0;
-            color: var(--text-secondary);
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            line-height: 1.5;
-          }
-
-          /* Custom scrollbar for logs */
-          .logs-container::-webkit-scrollbar {
-            width: 8px;
-          }
-
-          .logs-container::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 10px;
-          }
-
-          .logs-container::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 10px;
-          }
-
-          .logs-container::-webkit-scrollbar-thumb:hover {
-            background: var(--text-secondary);
-          }
-
-          /* Custom scrollbar for modal body */
-          .modal-body::-webkit-scrollbar {
-            width: 8px;
-          }
-
-          .modal-body::-webkit-scrollbar-track {
-            background: transparent;
-          }
-
-          .modal-body::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 10px;
-          }
-
-          .modal-body::-webkit-scrollbar-thumb:hover {
-            background: var(--text-secondary);
-          }
-
-          /* Responsive adjustments */
-          @media (max-width: 768px) {
-            .modal-overlay {
-              padding: 0.5rem;
-            }
-
-            .modal-content {
-              max-height: 95vh;
-              border-radius: 12px;
-            }
-
-            .modal-header {
-              padding: 1rem;
-            }
-
-            .modal-body {
-              padding: 1rem;
-            }
-          }
-                `}</style>
-      </div>
-    </div>
+  const timersRef = useRef([]);
+
+  const [transcript, setTranscript] = useState({ status: 'idle', logs: '' });
+  const [summary, setSummary] = useState({ status: 'idle', logs: '' });
+  const [error, setError] = useState(null);
+
+  // Clear every pending poll when the dialog unmounts, so a closed modal does
+  // not keep hitting the API.
+  useEffect(
+    () => () => {
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
+    },
+    []
   );
 
-  return createPortal(modalContent, document.body);
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [transcript.logs, summary.logs]);
+
+  const poll = useCallback(
+    (endpoint, jobId, setState, doneMessage) => {
+      const tick = async () => {
+        try {
+          const res = await fetch(`${endpoint}?jobId=${encodeURIComponent(jobId)}`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+
+          const logs = `${data.stdout || ''}${data.stderr || ''}`;
+          setState({ status: data.status, logs });
+
+          if (data.status === 'completed') {
+            setState({ status: 'completed', logs: `${logs}\n✅ ${doneMessage}` });
+            router.refresh();
+          } else if (data.status === 'error') {
+            setError(data.error || 'El proceso falló');
+            setState({ status: 'error', logs: `${logs}\n❌ ${data.error || 'El proceso falló'}` });
+          } else {
+            timersRef.current.push(setTimeout(tick, POLL_MS));
+          }
+        } catch (e) {
+          setError(e.message);
+          setState((prev) => ({ ...prev, status: 'error' }));
+        }
+      };
+      tick();
+    },
+    [router]
+  );
+
+  const startTranscription = useCallback(async () => {
+    setError(null);
+    setTranscript({ status: 'pending', logs: 'Iniciando transcripción…\n' });
+    try {
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoPath: meeting.path }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo iniciar la transcripción');
+      poll('/api/transcribe', data.jobId, setTranscript, 'Transcripción completada');
+    } catch (e) {
+      setError(e.message);
+      setTranscript({ status: 'error', logs: e.message });
+    }
+  }, [meeting.path, poll]);
+
+  const startSummary = useCallback(async () => {
+    setError(null);
+    setSummary({ status: 'pending', logs: 'Iniciando generación del resumen…\n' });
+    try {
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcriptPath: `${projectPath}/${meeting.baseName}_transcripcion.txt`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo iniciar el resumen');
+      poll('/api/summarize', data.jobId, setSummary, 'Resumen generado');
+    } catch (e) {
+      setError(e.message);
+      setSummary({ status: 'error', logs: e.message });
+    }
+  }, [projectPath, meeting.baseName, poll]);
+
+  // When opened from the "generate summary" action, start immediately.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (mode === 'summary' && !autoStarted.current) {
+      autoStarted.current = true;
+      startSummary();
+    }
+  }, [mode, startSummary]);
+
+  const busy =
+    ['pending', 'running'].includes(transcript.status) || ['pending', 'running'].includes(summary.status);
+
+  return (
+    <Modal
+      isOpen
+      onClose={busy ? () => {} : onClose}
+      title={mode === 'summary' ? 'Generar resumen' : 'Transcribir reunión'}
+      icon={mode === 'summary' ? 'sparkles' : 'mic'}
+      size="lg"
+      closeOnOverlay={!busy}
+      footer={
+        <button className="btn btn-secondary" onClick={onClose} disabled={busy}>
+          {busy ? 'Procesando…' : 'Cerrar'}
+        </button>
+      }
+    >
+      <div className="tm-meta">
+        <Icon name="video" size={15} />
+        <span className="truncate">{meeting.baseName}</span>
+      </div>
+
+      {error && (
+        <div className="tm-error">
+          <Icon name="alert-circle" size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <section className="tm-step">
+        <header>
+          <span className="step-index">1</span>
+          <h4>Transcripción (Whisper)</h4>
+          <StatusPill status={transcript.status} />
+        </header>
+
+        {transcript.status === 'idle' && !meeting.transcriptPath && (
+          <>
+            <p className="tm-hint">
+              Extrae el audio con ffmpeg y lo transcribe localmente con Whisper. En vídeos largos
+              puede tardar varios minutos.
+            </p>
+            <button className="btn btn-primary btn-sm" onClick={startTranscription}>
+              <Icon name="mic" size={14} />
+              Iniciar transcripción
+            </button>
+          </>
+        )}
+
+        {transcript.status === 'idle' && meeting.transcriptPath && (
+          <p className="tm-hint">Esta reunión ya tiene transcripción.</p>
+        )}
+
+        {transcript.logs && <pre className="tm-logs">{transcript.logs}</pre>}
+      </section>
+
+      <section className="tm-step">
+        <header>
+          <span className="step-index">2</span>
+          <h4>Resumen (Gemini)</h4>
+          <StatusPill status={summary.status} />
+        </header>
+
+        {summary.status === 'idle' && (
+          <>
+            <p className="tm-hint">
+              Envía la transcripción a Gemini y guarda un resumen con los puntos clave junto al
+              vídeo. Requiere <code>GEMINI_API_KEY</code> en tu <code>.env</code>.
+            </p>
+            <button
+              className="btn btn-soft btn-sm"
+              onClick={startSummary}
+              disabled={!meeting.transcriptPath && transcript.status !== 'completed'}
+            >
+              <Icon name="sparkles" size={14} />
+              Generar resumen
+            </button>
+          </>
+        )}
+
+        {summary.logs && <pre className="tm-logs">{summary.logs}</pre>}
+      </section>
+
+      <div ref={logsEndRef} />
+
+      <style jsx>{`
+        .tm-meta {
+          display: flex;
+          align-items: center;
+          gap: var(--sp-2);
+          padding: var(--sp-2) var(--sp-3);
+          border-radius: var(--r-md);
+          background: var(--surface-2);
+          font-size: var(--fs-sm);
+          color: var(--text-muted);
+        }
+
+        .tm-error {
+          display: flex;
+          align-items: flex-start;
+          gap: var(--sp-2);
+          padding: var(--sp-3);
+          border-radius: var(--r-md);
+          background: var(--danger-soft);
+          color: var(--danger);
+          font-size: var(--fs-sm);
+        }
+
+        .tm-step {
+          display: flex;
+          flex-direction: column;
+          gap: var(--sp-3);
+          padding: var(--sp-4);
+          border: 1px solid var(--border);
+          border-radius: var(--r-md);
+        }
+
+        .tm-step header {
+          display: flex;
+          align-items: center;
+          gap: var(--sp-2);
+        }
+
+        .tm-step h4 {
+          flex: 1;
+          font-size: var(--fs-sm);
+        }
+
+        .step-index {
+          display: grid;
+          place-items: center;
+          width: 22px;
+          height: 22px;
+          flex-shrink: 0;
+          border-radius: 50%;
+          background: var(--accent-soft);
+          color: var(--accent);
+          font-size: var(--fs-2xs);
+          font-weight: 700;
+        }
+
+        .tm-hint {
+          font-size: var(--fs-sm);
+          color: var(--text-muted);
+        }
+
+        .tm-logs {
+          max-height: 220px;
+          overflow: auto;
+          padding: var(--sp-3);
+          border-radius: var(--r-sm);
+          background: var(--surface-3);
+          font-family: var(--font-mono);
+          font-size: var(--fs-xs);
+          line-height: 1.6;
+          white-space: pre-wrap;
+          word-break: break-word;
+          color: var(--text-muted);
+        }
+      `}</style>
+    </Modal>
+  );
 }

@@ -1,88 +1,72 @@
-import { getDirectoryContent, getFileContent } from '@/lib/fs-utils';
-import ProjectView from '@/components/ProjectView';
+import { notFound } from 'next/navigation';
+import { getDirectoryContent, getFileContent, VIDEO_EXTENSIONS } from '@/lib/fs-utils';
+import ProjectView from '@/components/project/ProjectView';
+
+export async function generateMetadata({ params }) {
+    const resolved = await params;
+    const segments = (resolved.path || []).map((s) => decodeURIComponent(s));
+    return { title: segments[segments.length - 1] || 'Proyecto' };
+}
+
+/** Read a file, returning '' rather than throwing when it is absent. */
+async function readOptional(path) {
+    try {
+        return (await getFileContent(path)) || '';
+    } catch (error) {
+        console.error(`Error reading ${path}:`, error);
+        return '';
+    }
+}
 
 export default async function ProjectPage({ params }) {
-    const resolvedParams = await params;
-    const pathSegments = (resolvedParams.path || []).map(segment => decodeURIComponent(segment));
-    const projectPath = pathSegments.join('/');
+    const resolved = await params;
+    const segments = (resolved.path || []).map((segment) => decodeURIComponent(segment));
+    const projectPath = segments.join('/');
 
-    const items = await getDirectoryContent(projectPath);
-
-    if (!items) {
-        return (
-            <div className="container" style={{ padding: '2rem' }}>
-                <h1>Project Not Found</h1>
-                <p>The folder "{projectPath}" does not exist.</p>
-                <a href="/" style={{ color: 'var(--accent-primary)', marginTop: '1rem', display: 'inline-block' }}>Go back home</a>
-            </div>
-        );
-    }
-
-    const subprojects = items.filter(item => item.type === 'folder');
-    const files = items.filter(item => item.type === 'file');
-
-    // Try to fetch description and tasks
-    let description = '';
-    let tasks = '';
-    let links = '';
-
+    let items;
     try {
-        const descItem = files.find(f => f.name === 'description.md');
-        if (descItem) {
-            description = await getFileContent(`${projectPath}/description.md`);
-        }
-    } catch (e) {
-        console.error('Error reading description', e);
+        items = await getDirectoryContent(projectPath);
+    } catch {
+        notFound();
     }
 
-    try {
-        const tasksItem = files.find(f => f.name === 'tasks.md');
-        if (tasksItem) {
-            tasks = await getFileContent(`${projectPath}/tasks.md`);
-        }
-    } catch (e) {
-        console.error('Error reading tasks', e);
-    }
+    if (!items) notFound();
 
-    try {
-        const linksItem = files.find(f => f.name === 'links.md');
-        if (linksItem) {
-            links = await getFileContent(`${projectPath}/links.md`);
-        }
-    } catch (e) {
-        console.error('Error reading links', e);
-    }
+    const subprojects = items.filter((item) => item.type === 'folder');
+    const files = items.filter((item) => item.type === 'file');
 
-    // Process meetings
-    const videoFiles = files.filter(f => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mkv'));
+    const byName = new Map(files.map((f) => [f.name, f]));
 
-    const meetings = await Promise.all(videoFiles.map(async (video) => {
-        const baseName = video.name.substring(0, video.name.lastIndexOf('.'));
-        // Pattern: YYYY-MM-DD HH-MM-SS_transcripcion.txt
-        const transcriptFile = files.find(f => f.name === `${baseName}_transcripcion.txt`);
-        // Pattern: YYYY-MM-DD HH-MM-SS_transcripcion_resumen.txt
-        const summaryFile = files.find(f => f.name === `${baseName}_transcripcion_resumen.txt`);
+    const [description, tasks, links] = await Promise.all([
+        byName.has('description.md') ? readOptional(`${projectPath}/description.md`) : '',
+        byName.has('tasks.md') ? readOptional(`${projectPath}/tasks.md`) : '',
+        byName.has('links.md') ? readOptional(`${projectPath}/links.md`) : '',
+    ]);
 
-        let summaryContent = '';
-        if (summaryFile) {
-            try {
-                summaryContent = await getFileContent(`${projectPath}/${summaryFile.name}`);
-            } catch (e) {
-                console.error(`Error reading summary for ${video.name}`, e);
-            }
-        }
+    // A "meeting" is a video plus whatever transcript and summary sit beside it.
+    const videos = files.filter((f) =>
+        VIDEO_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext))
+    );
 
-        return {
-            name: video.name,
-            baseName: baseName,
-            path: video.path, // Relative path for API/Link
-            mtime: video.mtime,
-            transcriptPath: transcriptFile ? transcriptFile.path : null,
-            summaryContent: summaryContent
-        };
-    }));
+    const meetings = await Promise.all(
+        videos.map(async (video) => {
+            const baseName = video.name.slice(0, video.name.lastIndexOf('.'));
+            const transcript = byName.get(`${baseName}_transcripcion.txt`);
+            const summary = byName.get(`${baseName}_transcripcion_resumen.txt`);
 
-    // Sort by baseName (title with date pattern) descending
+            return {
+                name: video.name,
+                baseName,
+                path: video.path,
+                mtime: video.mtime,
+                transcriptPath: transcript ? transcript.path : null,
+                summaryContent: summary
+                    ? await readOptional(`${projectPath}/${summary.name}`)
+                    : '',
+            };
+        })
+    );
+
     meetings.sort((a, b) => b.baseName.localeCompare(a.baseName));
 
     return (

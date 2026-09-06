@@ -1,11 +1,9 @@
-import DashboardTasks from '@/components/DashboardTasks';
-import ProjectsTable from '@/components/ProjectsTable';
+import Dashboard from '@/components/Dashboard';
 
-export default async function HomePage() {
-  return (
-    <div className="container">
-      <DashboardTasks />
-      <ProjectsTable />
-    </div>
-  );
+export const metadata = {
+  title: 'Panel',
+};
+
+export default function HomePage() {
+  return <Dashboard />;
 }
