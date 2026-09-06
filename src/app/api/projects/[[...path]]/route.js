@@ -57,6 +57,15 @@ function badPath(error) {
 function streamFile(fullPath, contentType, rangeHeader) {
     const fileSize = fs.statSync(fullPath).size;
 
+    // A range request against an empty file is formally unsatisfiable, but a
+    // 416 there just makes placeholder files look broken in the console.
+    // Answer with an empty 200, as static file servers do.
+    if (fileSize === 0) {
+        return new NextResponse(null, {
+            headers: { 'Content-Length': '0', 'Content-Type': contentType },
+        });
+    }
+
     if (rangeHeader) {
         const [startRaw, endRaw] = rangeHeader.replace(/bytes=/, '').split('-');
         const start = parseInt(startRaw, 10) || 0;
