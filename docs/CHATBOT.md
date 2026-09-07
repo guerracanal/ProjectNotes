@@ -280,8 +280,19 @@ npm run doctor -- gemini --all   # todo su catálogo, no una muestra
 ```
 
 Para cada proveedor lista su catálogo, manda una pregunta mínima a una muestra
-de modelos y dice cuáles responden, con cuánto tardan y qué devuelven. Al final
-sugiere las líneas de `.env.local` para fijar uno como predeterminado.
+repartida de modelos y dice cuáles responden, con cuánto tardan y qué
+devuelven. Al final sugiere las líneas de `.env.local` para fijar uno.
+
+Cuando un modelo acepta la petición pero no devuelve texto, el volcado en crudo
+dice si el problema está en el modelo o en cómo se lee su respuesta:
+
+```bash
+npm run doctor -- --raw gemini <modelo>
+```
+
+Los valores `*_MODEL` de `.env.example` son solo una pista: los catálogos
+cambian, se retiran modelos y se renombran otros. El diagnóstico es lo que dice
+qué funciona hoy.
 
 Es la forma rápida de saber qué sirve de verdad sin ir probando modelos uno a
 uno desde la interfaz. Las claves se leen de `.env.local` y nunca se imprimen.
@@ -329,10 +340,16 @@ contactar con él. Comprueba que está en marcha y que has descargado algún mod
 apareciendo en el catálogo de Gemini. El adaptador reintenta solo con el
 sustituto y te avisa; si quieres dejar de verlo, elige otro en el selector.
 
-**Un modelo responde vacío** — pasa con modelos que razonan mucho y presupuestos
-de salida cortos. La app te lo dirá explícitamente. Prueba con un modelo
-«flash», o baja el número de fragmentos recuperados en los ajustes del
-asistente.
+**Un modelo responde vacío** — puede ser que razone mucho y agote el presupuesto
+de salida, o que no admita este endpoint. El mensaje distingue ambos casos: si
+no llegó ni un fragmento, el problema es el modelo; si llegaron fragmentos sin
+texto, el volcado en crudo (`--raw`) lo aclara.
+
+**Errores 400 en modelos raros** — los catálogos incluyen modelos que no son de
+chat: síntesis de voz, transcripción, moderación, generación de imagen, y
+endpoints agénticos como *deep research* o *computer use*. Se filtran del
+selector por el nombre, que es lo único que exponen los catálogos. Si alguno se
+cuela, el error dirá con claridad qué pasa.
 
 **No sé qué modelos me sirven** — `npm run doctor` los prueba todos y te lo dice.
 

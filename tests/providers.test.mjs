@@ -145,6 +145,32 @@ console.log('\nGemini — fallos que reportó el usuario');
   }
   check('a blocked prompt says so', /bloqueó|SAFETY/.test(blockedError), blockedError);
 
+  // 4b. A stream that carries nothing at all is a different problem from one
+  //     that carries frames without text, and the message must say which.
+  let silentError = '';
+  try {
+    for await (const _ of gemini.stream({
+      system, messages, model: 'gemini-silent', apiKey: 'gk', baseUrl: ROOT, maxTokens: 100,
+    })) { /* drain */ }
+  } catch (e) {
+    silentError = e.message;
+  }
+  check('an empty stream says nothing arrived at all',
+    /no envió nada/.test(silentError), silentError);
+  check('and points at the raw dump', /--raw gemini/.test(silentError), silentError);
+
+  // 4c. Some errors come inside the stream instead of as an HTTP status.
+  let inlineError = '';
+  try {
+    for await (const _ of gemini.stream({
+      system, messages, model: 'gemini-inline-error', apiKey: 'gk', baseUrl: ROOT, maxTokens: 100,
+    })) { /* drain */ }
+  } catch (e) {
+    inlineError = e.message;
+  }
+  check('an error inside the stream is surfaced',
+    inlineError.includes('Modelo no admitido en este endpoint'), inlineError);
+
   // 5. Deprecated entries should not reach the picker at all.
   const models = await gemini.listModels({ apiKey: 'gk', baseUrl: ROOT });
   check('the picker hides models flagged deprecated',

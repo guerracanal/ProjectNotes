@@ -113,6 +113,19 @@ export function startMock(port) {
       return;
     }
 
+    // 200 with an entirely empty stream: no frames at all.
+    if (url.pathname.includes('gemini-silent:streamGenerateContent')) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.end();
+      return;
+    }
+
+    // An error delivered inside the stream rather than as an HTTP status.
+    if (url.pathname.includes('gemini-inline-error:streamGenerateContent')) {
+      sse(res, [{ error: { code: 400, message: 'Modelo no admitido en este endpoint' } }]);
+      return;
+    }
+
     // Prompt refused by the safety filters: 200, no candidates at all.
     if (url.pathname.includes('gemini-blocked:streamGenerateContent')) {
       sse(res, [{ promptFeedback: { blockReason: 'SAFETY' } }]);

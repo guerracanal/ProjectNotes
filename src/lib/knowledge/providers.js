@@ -15,6 +15,32 @@ import Anthropic from '@anthropic-ai/sdk';
  * `system` is a single string; each adapter maps that onto its own wire format.
  */
 
+/**
+ * Families that are not conversational, and so have no business in a chat
+ * model picker: speech, embeddings, moderation, media generation, and the
+ * agentic endpoints that take a different request shape entirely.
+ *
+ * Matching on the name is crude, but neither Gemini nor the OpenAI-compatible
+ * catalogues expose a modality field, and the alternative — offering models
+ * that answer every prompt with a 400 — is worse. Anything that slips through
+ * now fails with a readable message rather than a truncated blob.
+ */
+const NON_CHAT_MODEL = new RegExp(
+  [
+    'embed', 'embedding',
+    'tts', 'text-to-speech', 'speech', 'orpheus', 'whisper', 'audio',
+    'guard', 'moderation',
+    'imagen', 'image', 'veo', 'video',
+    'deep-research', 'computer-use', 'antigravity',
+    'aqa', 'rerank',
+  ].join('|'),
+  'i'
+);
+
+export function isConversationalModel(id) {
+  return !NON_CHAT_MODEL.test(id);
+}
+
 /** Read an SSE body and yield each `data:` payload, skipping the [DONE] marker. */
 async function* readSse(response) {
   const reader = response.body.getReader();
@@ -70,11 +96,51 @@ async function* readNdjson(response) {
   }
 }
 
+/**
+ * Pull the human-readable message out of an error body.
+ *
+ * Gemini, Groq and OpenAI all wrap it as {error: {message}}; Ollama uses a
+ * plain {error: "..."}. Dumping the raw JSON instead means the reason gets
+ * truncated at the first brace of a pretty-printed body, which is exactly
+ * where the useful part starts.
+ */
+export function extractErrorMessage(body) {
+  if (!body) return '';
+
+  try {
+    const parsed = JSON.parse(body);
+    const message =
+      parsed?.error?.message ??
+      (typeof parsed?.error === 'string' ? parsed.error : null) ??
+      parsed?.message;
+    if (message) return String(message).replace(/\s+/g, ' ').trim();
+  } catch {
+    /* not JSON — fall through to the raw text */
+  }
+
+  return body.replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
+/** A short hint for the status codes people actually hit. */
+function statusHint(status) {
+  if (status === 401 || status === 403) return 'Revisa que la clave sea válida y esté activa.';
+  if (status === 429) return 'Límite de uso alcanzado. Espera un poco o prueba con otro modelo.';
+  if (status >= 500) return 'Es un fallo del proveedor, no tuyo. Inténtalo más tarde.';
+  return '';
+}
+
 async function assertOk(response, providerLabel) {
   if (response.ok) return;
+
   const body = await response.text().catch(() => '');
-  const detail = body.slice(0, 400);
-  throw new Error(`${providerLabel} respondió ${response.status}${detail ? `: ${detail}` : ''}`);
+  const message = extractErrorMessage(body);
+  const hint = statusHint(response.status);
+
+  throw new Error(
+    `${providerLabel} respondió ${response.status}` +
+      (message ? `: ${message}` : '') +
+      (hint ? ` (${hint})` : '')
+  );
 }
 
 /**
@@ -103,6 +169,7 @@ function openAiCompatible({ id, label, envKey, baseUrl, defaultModel, free, docs
       const data = await res.json();
       return (data.data || [])
         .map((model) => ({ id: model.id, label: model.id }))
+        .filter((model) => isConversationalModel(model.id))
         .sort((a, b) => a.id.localeCompare(b.id));
     },
 
@@ -165,9 +232,19 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_MIN_OUTPUT_TOKENS = 8192;
 
 /** Explain, in the user's terms, why Gemini returned no text. */
-function geminiEmptyAnswerReason({ finishReason, blockReason, usage, model }) {
+function geminiEmptyAnswerReason({ finishReason, blockReason, usage, frames, model }) {
   if (blockReason) {
     return `Gemini bloqueó la petición (${blockReason}). Reformula la pregunta.`;
+  }
+
+  // No frames at all is a different problem from frames without text, and the
+  // difference is the first thing worth knowing when diagnosing.
+  if (frames === 0) {
+    return (
+      `«${model}» aceptó la petición pero no envió nada. ` +
+      'Puede que ese modelo no admita este endpoint. ' +
+      `Para verlo en crudo: npm run doctor -- --raw gemini ${model}`
+    );
   }
 
   if (finishReason === 'MAX_TOKENS') {
@@ -183,7 +260,10 @@ function geminiEmptyAnswerReason({ finishReason, blockReason, usage, model }) {
     return `Gemini terminó sin respuesta (${finishReason}).`;
   }
 
-  return `«${model}» no devolvió ninguna respuesta. Prueba con otro modelo.`;
+  return (
+    `«${model}» respondió sin texto (${frames} fragmento${frames === 1 ? '' : 's'}, ` +
+    `sin motivo de fin). Para verlo en crudo: npm run doctor -- --raw gemini ${model}`
+  );
 }
 
 const PROVIDERS = {
@@ -272,8 +352,7 @@ const PROVIDERS = {
           id: model.name.replace(/^models\//, ''),
           label: model.displayName || model.name.replace(/^models\//, ''),
         }))
-        // Embedding and media-generation models cannot hold a conversation.
-        .filter((model) => !/embedding|aqa|imagen|veo/i.test(model.id))
+        .filter((model) => isConversationalModel(model.id))
         .sort((a, b) => a.id.localeCompare(b.id));
     },
 
@@ -325,7 +404,8 @@ const PROVIDERS = {
           effectiveModel = replacement;
           res = await call(effectiveModel);
         } else {
-          throw new Error(`Gemini respondió 404${detail ? `: ${detail.slice(0, 400)}` : ''}`);
+          const message = extractErrorMessage(detail);
+          throw new Error(`Gemini respondió 404${message ? `: ${message}` : ''}`);
         }
       }
 
@@ -335,8 +415,16 @@ const PROVIDERS = {
       let finishReason = null;
       let blockReason = null;
       let produced = false;
+      let frames = 0;
 
       for await (const event of readSse(res)) {
+        frames += 1;
+
+        // Some errors arrive inside the stream rather than as an HTTP status.
+        if (event.error) {
+          throw new Error(`Gemini: ${extractErrorMessage(JSON.stringify(event))}`);
+        }
+
         const candidate = event.candidates?.[0];
 
         for (const part of candidate?.content?.parts || []) {
@@ -356,7 +444,9 @@ const PROVIDERS = {
       // A silent empty answer is the worst outcome: it looks like the app is
       // broken. Say what actually happened.
       if (!produced) {
-        throw new Error(geminiEmptyAnswerReason({ finishReason, blockReason, usage, model: effectiveModel }));
+        throw new Error(
+          geminiEmptyAnswerReason({ finishReason, blockReason, usage, frames, model: effectiveModel })
+        );
       }
 
       yield {

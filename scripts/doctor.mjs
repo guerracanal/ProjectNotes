@@ -60,7 +60,14 @@ const {
 
 const args = process.argv.slice(2);
 const testAll = args.includes('--all');
-const only = args.filter((a) => !a.startsWith('--'));
+
+// --raw <proveedor> <modelo>: manda una petición y vuelca la respuesta tal cual.
+// Es lo que hace falta cuando un modelo devuelve 200 sin texto y no se sabe por
+// qué: el volcado dice si el problema es el parseo o el propio modelo.
+const rawIndex = args.indexOf('--raw');
+const rawMode = rawIndex !== -1;
+const positional = args.filter((a) => !a.startsWith('--'));
+const only = rawMode ? positional.slice(0, 1) : positional;
 
 const color = process.stdout.isTTY && !process.env.NO_COLOR;
 const GREEN = color ? '\x1b[32m' : '';
@@ -99,6 +106,64 @@ async function tryModel(provider, config, modelId) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// --- volcado en crudo ------------------------------------------------------
+
+if (rawMode) {
+  const [providerId, modelId] = positional;
+
+  if (!providerId || !modelId) {
+    console.log('Uso: npm run doctor -- --raw <proveedor> <modelo>');
+    process.exit(1);
+  }
+  if (!isConfigured(providerId)) {
+    console.log(`${RED}${providerId} no está configurado.${RESET}`);
+    process.exit(1);
+  }
+
+  const config = providerConfig(providerId);
+  console.log(`Volcando la respuesta cruda de ${providerId} / ${modelId}…\n`);
+
+  if (providerId === 'gemini') {
+    const root = config.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+    const res = await fetch(
+      `${root}/models/${encodeURIComponent(modelId)}:streamGenerateContent` +
+        `?alt=sse&key=${encodeURIComponent(config.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: 'Sé breve.' }] },
+          contents: [{ role: 'user', parts: [{ text: PROMPT }] }],
+          generationConfig: { maxOutputTokens: 8192 },
+        }),
+      }
+    );
+
+    console.log(`HTTP ${res.status} ${res.statusText}`);
+    console.log(`content-type: ${res.headers.get('content-type')}\n`);
+    console.log(await res.text());
+  } else {
+    const provider = getProvider(providerId);
+    if (!provider) {
+      console.log(`${RED}Proveedor desconocido: ${providerId}${RESET}`);
+      process.exit(1);
+    }
+    for await (const event of provider.stream({
+      system: 'Sé breve.',
+      messages: [{ role: 'user', content: PROMPT }],
+      model: modelId,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      maxTokens: 256,
+    })) {
+      console.log(JSON.stringify(event));
+    }
+  }
+
+  console.log(`\n${DIM}Pega esta salida (sin la clave, no aparece) para diagnosticar.${RESET}`);
+  process.exit(0);
 }
 
 // --- ejecución -------------------------------------------------------------
@@ -154,9 +219,18 @@ for (const id of targets) {
   // El configurado se prueba siempre, aunque no esté en el catálogo: si lo han
   // retirado, esa es justo la comprobación que hace falta.
   const configured = models.find((m) => m.id === config.model) || { id: config.model };
+  const rest = models.filter((m) => m.id !== config.model);
+
+  // Repartir la muestra por todo el catálogo en vez de coger los cinco
+  // primeros: alfabéticamente suelen ser vecinos de la misma familia, y no
+  // dicen nada del resto.
+  const spread = [];
+  const step = Math.max(1, Math.floor(rest.length / 5));
+  for (let i = 0; i < rest.length && spread.length < 5; i += step) spread.push(rest[i]);
+
   const sample = testAll
     ? [...models, ...(models.some((m) => m.id === config.model) ? [] : [configured])]
-    : [configured, ...models.filter((m) => m.id !== config.model).slice(0, 5)];
+    : [configured, ...spread];
 
   console.log(`Probando ${sample.length}${testAll ? '' : ' (usa --all para todos)'}…\n`);
 
@@ -173,7 +247,7 @@ for (const id of targets) {
       console.log(`${GREEN}✓${RESET} ${result.ms}ms  ${DIM}«${preview}»${RESET}`);
     } else {
       broken.push({ id: model.id, error: result.error });
-      console.log(`${RED}✗${RESET} ${result.error.split('\n')[0].slice(0, 90)}`);
+      console.log(`${RED}✗${RESET} ${result.error.replace(/\s+/g, ' ').slice(0, 150)}`);
     }
 
     for (const notice of result.notices) console.log(`      ${YELLOW}↪ ${notice}${RESET}`);
@@ -185,6 +259,19 @@ for (const id of targets) {
     console.log(`\n  Para fijar uno como predeterminado, en .env.local:`);
     console.log(`    ${id.toUpperCase()}_MODEL=${working[0]}`);
     console.log(`    CHAT_PROVIDER=${id}`);
+  } else if (!testAll && models.length > sample.length) {
+    console.log(
+      `\n  ${YELLOW}Ninguno de la muestra funciona.${RESET} Prueba el catálogo entero:\n` +
+        `    npm run doctor -- ${id} --all`
+    );
+  }
+
+  const mute = broken.find((b) => /sin texto|no envió nada/.test(b.error));
+  if (mute) {
+    console.log(
+      `\n  Para ver en crudo qué devuelve «${mute.id}»:\n` +
+        `    npm run doctor -- --raw ${id} ${mute.id}`
+    );
   }
 }
 

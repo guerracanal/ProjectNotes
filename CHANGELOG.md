@@ -7,6 +7,42 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.1.4] — 2026-09-07
+
+Mejoras salidas de probar el diagnóstico contra catálogos reales de Gemini y
+Groq.
+
+### Corregido
+
+- **Los errores de los proveedores no se podían leer.** Se volcaba el cuerpo
+  crudo y se cortaba a 90 caracteres, así que de un JSON con sangrado solo se
+  veía `{`. Ahora se extrae el mensaje (`error.message`, o `error` a secas en
+  Ollama) y se añade una pista para los códigos habituales: 401 revisa la
+  clave, 429 límite de uso, 5xx es del proveedor.
+- **Los catálogos ofrecían modelos que no son de chat.** Síntesis de voz,
+  transcripción, embeddings, moderación, generación de imagen y vídeo, y
+  endpoints agénticos (*deep research*, *computer use*) respondían 400 a
+  cualquier pregunta. Se filtran por nombre, que es lo único que exponen tanto
+  Gemini como los catálogos compatibles con OpenAI.
+- **«No devolvió ninguna respuesta» no distinguía dos problemas distintos.**
+  Ahora separa el caso en que no llega ni un fragmento —el modelo probablemente
+  no admite este endpoint— del caso en que llegan fragmentos sin texto, y en
+  ambos indica el comando para ver la respuesta en crudo.
+- Un error que Gemini manda **dentro** del stream, en vez de como código HTTP,
+  ya no se ignora.
+
+### Añadido
+
+- `npm run doctor -- --raw <proveedor> <modelo>`: vuelca la respuesta tal cual.
+  Es lo que hace falta cuando un modelo contesta 200 sin texto y no está claro
+  si falla el modelo o el parseo.
+- La muestra del diagnóstico se reparte por todo el catálogo en vez de coger
+  los cinco primeros por orden alfabético, que suelen ser de la misma familia.
+- Cuando ningún modelo de la muestra funciona, se sugiere `--all`; cuando uno
+  se queda mudo, se sugiere `--raw`.
+
+---
+
 ## [1.1.3] — 2026-09-07
 
 ### Corregido
