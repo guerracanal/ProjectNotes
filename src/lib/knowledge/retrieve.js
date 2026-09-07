@@ -2,6 +2,7 @@ import { searchBm25 } from './bm25';
 import { cosineSimilarity, embedTexts, getEmbeddingConfig } from './embeddings';
 import { getIndex } from './store';
 import { normalize } from './tokenizer';
+import { expandQueryForProfile } from '@/lib/user-profile';
 
 /**
  * Hybrid retrieval: BM25 and (when available) dense embeddings, fused with
@@ -57,15 +58,22 @@ export function excerpt(text, query, maxLength = 260) {
  * @param {string} query
  * @param {{ limit?: number, scope?: string|null, semantic?: boolean }} options
  */
-export async function retrieve(query, { limit = 8, scope = null, semantic = true } = {}) {
+export async function retrieve(query, { limit = 8, scope = null, semantic = true, profile = null } = {}) {
   const index = await getIndex();
   if (!index.chunks.length || !query?.trim()) {
     return { hits: [], semanticUsed: false, totalChunks: index.chunks.length };
   }
 
+  // «¿Qué tareas tengo?» no contiene el nombre de quien pregunta, pero el
+  // fragmento que lo responde sí: en una reunión se dice «Jorge, ¿te encargas
+  // tú?». Añadir el nombre a la consulta —solo para buscar— es lo que hace que
+  // ese fragmento aparezca.
+  const searchQuery = expandQueryForProfile(query, profile);
+  const expanded = searchQuery !== query;
+
   // Ask each retriever for a wide candidate pool; scoping and fusion narrow it.
   const poolSize = Math.max(limit * 6, 40);
-  const lexical = searchBm25(index.bm25, query, poolSize);
+  const lexical = searchBm25(index.bm25, searchQuery, poolSize);
 
   const rankedLists = [lexical];
   const weights = [1];
@@ -73,7 +81,7 @@ export async function retrieve(query, { limit = 8, scope = null, semantic = true
 
   if (semantic && index.embeddings && getEmbeddingConfig().enabled) {
     try {
-      const [queryVector] = (await embedTexts([query], { inputType: 'query' })) || [];
+      const [queryVector] = (await embedTexts([searchQuery], { inputType: 'query' })) || [];
       if (queryVector) {
         const dense = index.embeddings
           .map((vector, i) => ({ index: i, score: cosineSimilarity(queryVector, vector) }))
@@ -106,6 +114,8 @@ export async function retrieve(query, { limit = 8, scope = null, semantic = true
       title: chunk.media || chunk.title,
       heading: chunk.heading,
       text: chunk.text,
+      // El extracto se resalta con lo que escribió la persona, no con la
+      // consulta ampliada: si no, se subrayaría su propio nombre.
       excerpt: excerpt(chunk.text, query),
       // Carried through for transcript chunks so a citation can deep-link to
       // the exact second of the recording.
@@ -117,7 +127,7 @@ export async function retrieve(query, { limit = 8, scope = null, semantic = true
     if (hits.length >= limit) break;
   }
 
-  return { hits, semanticUsed, totalChunks: index.chunks.length };
+  return { hits, semanticUsed, expandedWithProfile: expanded, totalChunks: index.chunks.length };
 }
 
 /**

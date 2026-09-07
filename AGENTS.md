@@ -91,6 +91,7 @@ src/
     knowledge/            ← Troceado, BM25, embeddings, recuperación, prompt
       providers.js        ← Un adaptador por proveedor de chat, misma interfaz
     transcript.js         ← Marcas de tiempo: parseo, formato, búsqueda binaria
+    user-profile.js       ← Quién usa la app: identidad y ampliación de consulta
     task-parser.js        ← Markdown de tareas ↔ objetos
     talks-parser.js       ← talks.md ↔ objetos
     gdrive.js             ← Cliente de Google Drive
@@ -183,7 +184,22 @@ pregunta → retrieve() ─┬→ BM25            ─┐
                                                         + chips de fuente
 ```
 
-### 5.1 Proveedores
+### 5.1 Quién pregunta
+
+`src/lib/user-profile.js`. Que el asistente sepa tu nombre no es cosmético: en
+una transcripción nadie dice «el usuario», dice tu nombre, así que «¿qué tareas
+tengo?» no comparte ni una palabra con el fragmento que la responde.
+
+Por eso la consulta **se amplía con el nombre y los alias** cuando detecta una
+pregunta en primera persona, y solo para recuperar: la pregunta que ve el modelo
+no cambia, y el extracto se sigue resaltando con lo que escribió la persona (si
+no, subrayaría su propio nombre).
+
+La identidad va en el bloque de instrucciones y no en el del contexto: para una
+misma persona no cambia entre turnos, así que el bloque sigue siendo estable
+byte a byte y puede llevar el punto de caché.
+
+### 5.2 Proveedores
 
 `src/lib/knowledge/providers.js` es el único sitio que sabe de proveedores.
 Cada uno expone `listModels()` y `stream()`, así que `/api/chat` no sabe cuál

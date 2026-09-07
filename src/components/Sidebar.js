@@ -7,6 +7,7 @@ import Icon from './ui/Icon';
 import Modal from './ui/Modal';
 import ThemeToggle from './ThemeToggle';
 import GoogleDriveModal from './GoogleDriveModal';
+import ProfileModal from './ProfileModal';
 import KnowledgeStatus from './KnowledgeStatus';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -165,6 +166,7 @@ export default function Sidebar() {
   const [filter, setFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showDrive, setShowDrive] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [driveConnected, setDriveConnected] = useState(false);
   const [newName, setNewName] = useState('');
   const [parent, setParent] = useState('');
@@ -399,6 +401,12 @@ export default function Sidebar() {
             <span className="switch" data-on={String(settings.showMeetings)} />
           </button>
 
+          <button className="nav-link toggle-row" onClick={() => setShowProfile(true)}>
+            <Icon name="user" size={16} />
+            <span>Tu perfil</span>
+            {settings.userName && <span className="profile-name truncate">{settings.userName}</span>}
+          </button>
+
           <button className="nav-link toggle-row" onClick={() => setShowDrive(true)}>
             <Icon name="cloud" size={16} />
             <span>Google Drive</span>
@@ -462,6 +470,10 @@ export default function Sidebar() {
           </select>
         </div>
       </Modal>
+
+      {/* Se monta al abrirse para que los campos partan siempre del ajuste
+          guardado, sin sincronizarlos con un efecto. */}
+      {showProfile && <ProfileModal isOpen onClose={() => setShowProfile(false)} />}
 
       <GoogleDriveModal
         isOpen={showDrive}
@@ -584,6 +596,13 @@ export default function Sidebar() {
 
         .toggle-row.muted {
           opacity: 0.65;
+        }
+
+        .profile-name {
+          flex: 0 1 auto !important;
+          max-width: 90px;
+          font-size: var(--fs-2xs);
+          color: var(--text-subtle);
         }
 
         .dot {

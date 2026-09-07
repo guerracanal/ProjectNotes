@@ -3,8 +3,8 @@
  "media": "reunion_kickoff.mp4",
  "language": "es",
  "model": "small",
- "duration": 224.0,
- "segmentCount": 13,
+ "duration": 272.4,
+ "segmentCount": 16,
  "segments": [
   {
    "id": 0,
@@ -95,6 +95,27 @@
    "start": 208.6,
    "end": 224.0,
    "text": "Buen punto. Lo dejamos como pendiente para la próxima reunión y lo traigo yo con dos opciones comparadas. Con esto cerramos. Gracias a todos.",
+   "speaker": null
+  },
+  {
+   "id": 13,
+   "start": 224.0,
+   "end": 241.5,
+   "text": "Una cosa más antes de cerrar. Jorge, ¿te encargas tú de hablar con el equipo legal para revisar los textos? Necesitamos su visto bueno antes de maquetar.",
+   "speaker": null
+  },
+  {
+   "id": 14,
+   "start": 241.5,
+   "end": 258.0,
+   "text": "Sí, lo llevo yo. Hablo con ellos esta semana y os cuento en la próxima. También me quedo con lo del proveedor de analítica, que lo comentaba antes.",
+   "speaker": null
+  },
+  {
+   "id": 15,
+   "start": 258.0,
+   "end": 272.4,
+   "text": "Perfecto. Entonces Guerra se encarga de legal y de traer las dos opciones de analítica comparadas. Con eso sí cerramos.",
    "speaker": null
   }
  ]

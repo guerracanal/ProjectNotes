@@ -76,6 +76,45 @@ pregunta
 
 ---
 
+## Quién pregunta
+
+El asistente puede saber quién eres, y no es un detalle cosmético.
+
+En una transcripción nadie dice «el usuario»: dicen tu nombre. Si preguntas
+«¿qué tareas tengo?», esa consulta no contiene la palabra «Jorge», así que el
+fragmento donde alguien dice *«Jorge, ¿te encargas tú de hablar con legal?»* no
+se recupera nunca. La pregunta y su respuesta no comparten ni una palabra.
+
+Configurándolo pasan dos cosas:
+
+1. **El prompt** le dice al modelo a quién corresponde la primera persona, y que
+   avise si en el contexto hay varias personas que encajen con ese nombre.
+2. **La búsqueda se amplía**: cuando detecta una pregunta sobre uno mismo
+   («mis», «tengo», «me comprometí»…), añade el nombre y los alias a la consulta
+   —solo para recuperar, la pregunta que ve el modelo no cambia— y así aparecen
+   los fragmentos donde te nombran en tercera persona.
+
+Medido sobre el proyecto de ejemplo, con la pregunta «¿Qué tareas tengo
+pendientes?»:
+
+| | Fragmentos de la grabación recuperados |
+|---|---|
+| Sin perfil | ninguno |
+| Con perfil | los dos en que se le asigna el trabajo |
+
+Se configura en la barra lateral (**Tu perfil**) o en `.env.local`:
+
+```bash
+USER_NAME=Jorge Guerra
+USER_ALIASES=Jorge, Guerra
+```
+
+Lo de la interfaz tiene prioridad sobre lo del entorno, y no obliga a reiniciar.
+Conviene poner varios alias: en una transcripción rara vez sale el nombre
+completo.
+
+---
+
 ## Indexado
 
 `src/lib/knowledge/store.js` recorre `projects_data/` y construye el índice.

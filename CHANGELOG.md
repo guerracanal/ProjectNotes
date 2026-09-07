@@ -7,6 +7,30 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.2.0] — 2026-09-07
+
+### Añadido
+
+- **El asistente puede saber quién eres.** Se configura en la barra lateral
+  (**Tu perfil**) o con `USER_NAME` y `USER_ALIASES` en `.env.local`; lo de la
+  interfaz manda sobre lo del entorno y no obliga a reiniciar.
+- Sirve para dos cosas, y la segunda es la que importa:
+  - El prompt le dice al modelo a quién corresponde la primera persona, y que
+    avise si en el contexto hay varias personas que encajen con ese nombre.
+  - **La búsqueda se amplía con tu nombre** cuando la pregunta va sobre ti
+    («mis», «tengo», «me comprometí»…). En una transcripción nadie dice «el
+    usuario»: dice tu nombre, así que «¿qué tareas tengo?» no comparte ni una
+    palabra con el fragmento que la responde. Sobre el proyecto de ejemplo, esa
+    pregunta pasa de recuperar cero fragmentos de la grabación a recuperar los
+    dos en que se asigna el trabajo.
+- Los alias se separan por comas: en una transcripción rara vez aparece el
+  nombre completo.
+- Nueva ruta `/api/profile` con lo configurado en el servidor.
+- La transcripción de ejemplo incluye ahora una asignación de tareas, para que
+  el comportamiento se pueda ver sin datos propios.
+
+---
+
 ## [1.1.6] — 2026-09-07
 
 ### Corregido

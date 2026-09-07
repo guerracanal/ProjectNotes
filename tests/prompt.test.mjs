@@ -6,13 +6,18 @@ import { join } from 'node:path';
 const dir = mkdtempSync(join(tmpdir(), 'prompt-'));
 const root = fileURLToPath(new URL('../src/lib/', import.meta.url));
 
-// Inline the one @/ import so the module can be loaded outside Next.
+// Inline the @/ imports so the module can be loaded outside Next.
 writeFileSync(join(dir, 'transcript.mjs'), readFileSync(`${root}transcript.js`, 'utf8'));
+writeFileSync(join(dir, 'user-profile.mjs'), readFileSync(`${root}user-profile.js`, 'utf8'));
 let prompt = readFileSync(`${root}knowledge/prompt.js`, 'utf8')
-  .replace("from '@/lib/transcript'", "from './transcript.mjs'");
+  .replace("from '@/lib/transcript'", "from './transcript.mjs'")
+  .replace("from '@/lib/user-profile'", "from './user-profile.mjs'");
 writeFileSync(join(dir, 'prompt.mjs'), prompt);
 
-const { ASSISTANT_INSTRUCTIONS, buildContextBlock } = await import(pathToFileURL(join(dir, 'prompt.mjs')).href);
+const { ASSISTANT_INSTRUCTIONS, buildContextBlock, buildInstructions } = await import(
+  pathToFileURL(join(dir, 'prompt.mjs')).href
+);
+const { normalizeProfile } = await import(pathToFileURL(join(dir, 'user-profile.mjs')).href);
 
 const failures = [];
 const check = (l, ok, d = '') => {
@@ -42,6 +47,21 @@ check('the instructions flag transcription errors',
 
 const empty = buildContextBlock([]);
 check('says plainly when nothing was found', empty.includes('No se encontró'));
+
+console.log('\nbuildInstructions');
+{
+  const conPerfil = buildInstructions(
+    normalizeProfile({ name: 'Jorge Guerra', aliases: 'Jorge, Guerra' })
+  );
+  check('mantiene las instrucciones base', conPerfil.includes('Cita tus fuentes'));
+  check('dice quién pregunta', conPerfil.includes('Jorge Guerra'));
+  check('lista las otras formas de nombrarle',
+    conPerfil.includes('Jorge, Guerra') || conPerfil.includes('Guerra'));
+  check('explica la primera persona', /primera persona/.test(conPerfil));
+
+  const sinPerfil = buildInstructions(normalizeProfile({}));
+  check('sin perfil no añade nada', sinPerfil === ASSISTANT_INSTRUCTIONS);
+}
 
 console.log();
 if (failures.length) { console.log(`❌ ${failures.length} fallo(s)`); process.exit(1); }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { retrieve } from '@/lib/knowledge/retrieve';
-import { ASSISTANT_INSTRUCTIONS, buildContextBlock } from '@/lib/knowledge/prompt';
+import { buildContextBlock, buildInstructions } from '@/lib/knowledge/prompt';
+import { normalizeProfile, profileFromEnv } from '@/lib/user-profile';
 import {
     defaultProviderId,
     getProvider,
@@ -26,7 +27,15 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Cuerpo de la petición inválido' }, { status: 400 });
     }
 
-    const { message, history = [], scope = null, topK = 8, provider: requestedProvider, model } = body;
+    const {
+        message,
+        history = [],
+        scope = null,
+        topK = 8,
+        provider: requestedProvider,
+        model,
+        profile: requestedProfile,
+    } = body;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
         return NextResponse.json({ error: 'El mensaje es obligatorio' }, { status: 400 });
@@ -63,6 +72,13 @@ export async function POST(request) {
         );
     }
 
+    // Lo que se configura en la interfaz manda sobre el entorno: es lo que la
+    // persona acaba de escribir, y no obliga a reiniciar el servidor.
+    const envProfile = profileFromEnv();
+    const profile = requestedProfile?.name || requestedProfile?.aliases?.length
+        ? normalizeProfile(requestedProfile)
+        : envProfile;
+
     // Retrieve before opening the stream, so a retrieval failure is a clean
     // HTTP error rather than a half-written answer.
     let retrieval;
@@ -70,6 +86,7 @@ export async function POST(request) {
         retrieval = await retrieve(message, {
             limit: Math.min(Math.max(Number(topK) || 8, 1), 20),
             scope,
+            profile,
         });
     } catch (error) {
         console.error('[chat] retrieval failed:', error);
@@ -84,10 +101,11 @@ export async function POST(request) {
 
     // Anthropic takes the two halves separately so the instructions can carry a
     // cache breakpoint; every other provider takes one system string.
+    const instructions = buildInstructions(profile);
     const system =
         providerId === 'anthropic'
-            ? { instructions: ASSISTANT_INSTRUCTIONS, context: contextBlock }
-            : `${ASSISTANT_INSTRUCTIONS}\n\n${contextBlock}`;
+            ? { instructions, context: contextBlock }
+            : `${instructions}\n\n${contextBlock}`;
 
     const messages = [
         ...history
@@ -126,6 +144,7 @@ export async function POST(request) {
                 })),
                 semantic: retrieval.semanticUsed,
                 totalChunks: retrieval.totalChunks,
+                expandedWithProfile: retrieval.expandedWithProfile ?? false,
                 provider: providerId,
                 model: model || config.model,
             });

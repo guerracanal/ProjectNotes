@@ -18,6 +18,11 @@ export const DEFAULT_SETTINGS = {
   chatProvider: null, // null = adopt whatever the server has configured
   chatModel: null,
 
+  // Quién usa la aplicación. Vacío = se usa USER_NAME / USER_ALIASES del
+  // servidor, si están definidas.
+  userName: '',
+  userAliases: '',
+
   // Google Drive
   gdriveClientId: '',
   gdriveFolderName: 'ProjectNotes',

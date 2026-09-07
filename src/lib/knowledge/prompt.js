@@ -1,4 +1,5 @@
 import { formatTime } from '@/lib/transcript';
+import { describeProfile } from '@/lib/user-profile';
 
 /**
  * System prompt for the ProjectNotes assistant.
@@ -22,6 +23,18 @@ Reglas de trabajo:
 5. Sé conciso y estructurado. Usa listas y encabezados cortos cuando ayuden. Evita preámbulos del tipo "Según el contexto proporcionado"; ve directo a la respuesta.
 6. Si te piden un resumen, una lista de tareas o un acta, produce el resultado en markdown limpio y accionable.
 7. Si la pregunta es ambigua y afecta materialmente a la respuesta, pregunta antes de responder. En caso contrario, responde con la interpretación más razonable y dilo.`;
+
+/**
+ * Instrucciones más la identidad de quien pregunta.
+ *
+ * Va junto a las instrucciones y no con el contexto porque para una misma
+ * persona no cambia entre turnos: así el bloque sigue siendo estable byte a
+ * byte y puede llevar el punto de caché.
+ */
+export function buildInstructions(profile) {
+  const identity = describeProfile(profile);
+  return identity ? `${ASSISTANT_INSTRUCTIONS}\n\n${identity}` : ASSISTANT_INSTRUCTIONS;
+}
 
 /** Render the retrieved chunks into the block the model reads. */
 export function buildContextBlock(hits) {

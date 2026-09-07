@@ -148,6 +148,10 @@ Cuando lo que cita se dijo en una reunión, la cita lleva el minuto: pulsarla
 abre la grabación exactamente en ese punto. Verificar una afirmación deja de ser
 leerse una transcripción entera.
 
+Dile quién eres en **Tu perfil** (barra lateral) y entenderá a quién te refieres
+con «mis tareas», además de encontrar los momentos en que te nombran: en una
+reunión nadie dice «el usuario», dice tu nombre.
+
 Por defecto la recuperación es **léxica (BM25)**: no necesita clave, ni red, ni
 descargar modelos, y acierta justo donde un modelo semántico suele fallar, con
 nombres de proyecto, siglas y nombres propios. Si quieres además recuperación

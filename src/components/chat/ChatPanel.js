@@ -143,6 +143,7 @@ export default function ChatPanel({ isOpen, onClose }) {
             topK: settings.assistantTopK,
             provider: selection.provider,
             model: selection.model,
+            profile: { name: settings.userName, aliases: settings.userAliases },
           }),
         });
 
@@ -223,6 +224,8 @@ export default function ChatPanel({ isOpen, onClose }) {
       scopeToProject,
       projectPath,
       settings.assistantTopK,
+      settings.userName,
+      settings.userAliases,
       selection.provider,
       selection.model,
     ]
