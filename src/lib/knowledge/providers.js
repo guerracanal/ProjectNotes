@@ -271,6 +271,15 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 // entirely on reasoning, leaving nothing to return.
 const GEMINI_MIN_OUTPUT_TOKENS = 8192;
 
+/**
+ * Modelos retirados y el sustituto que Google nombra en su 404.
+ *
+ * Sin esto, cada mensaje con un modelo retirado seleccionado paga primero una
+ * petición fallida. Se recuerda por proceso: el catálogo no cambia tan deprisa
+ * como para justificar repetir el viaje en cada turno.
+ */
+const geminiReplacements = new Map();
+
 /** Explain, in the user's terms, why Gemini returned no text. */
 function geminiEmptyAnswerReason({ finishReason, blockReason, usage, frames, model }) {
   if (blockReason) {
@@ -427,7 +436,18 @@ const PROVIDERS = {
           }
         );
 
-      let effectiveModel = model;
+      // Si ya se descubrió que este modelo está retirado, ir directo al
+      // sustituto en lugar de repetir el 404.
+      let effectiveModel = geminiReplacements.get(model) || model;
+      const redirected = effectiveModel !== model;
+
+      if (redirected) {
+        yield {
+          type: 'notice',
+          text: `El modelo «${model}» ya no está disponible para cuentas nuevas. Se ha usado «${effectiveModel}» en su lugar.`,
+        };
+      }
+
       let res = await call(effectiveModel);
 
       // Google keeps retired models in the catalogue but refuses them for new
@@ -437,6 +457,7 @@ const PROVIDERS = {
         const replacement = detail.match(/models\/([\w.-]+)\s+for the latest/)?.[1];
 
         if (replacement && replacement !== effectiveModel) {
+          geminiReplacements.set(model, replacement);
           yield {
             type: 'notice',
             text: `El modelo «${effectiveModel}» ya no está disponible para cuentas nuevas. Se ha usado «${replacement}» en su lugar.`,

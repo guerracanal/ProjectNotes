@@ -116,6 +116,15 @@ console.log('\nGemini — fallos que reportó el usuario');
   check('it says which model actually answered',
     events.find((e) => e.type === 'done')?.model === 'gemini-replacement');
 
+  // La segunda vez debe ir directa al sustituto: repetir el 404 en cada
+  // mensaje cuesta un viaje entero de ida y vuelta.
+  const before = received.filter((r) => r.path.includes('gemini-retired')).length;
+  for await (const _ of gemini.stream({
+    system, messages, model: 'gemini-retired', apiKey: 'gk', baseUrl: ROOT, maxTokens: 100,
+  })) { /* drain */ }
+  const after = received.filter((r) => r.path.includes('gemini-retired')).length;
+  check('no repite el 404 en llamadas siguientes', after === before, `${before} -> ${after}`);
+
   // 2. A thinking model that spends the whole budget reasoning returns 200
   //    with no text. Silence looks like a broken app; it must say why.
   let thinkerError = '';

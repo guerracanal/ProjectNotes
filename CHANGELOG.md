@@ -7,6 +7,25 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.1.6] — 2026-09-07
+
+### Corregido
+
+- **El diagnóstico sugería un modelo retirado.** Si un modelo se redirige a su
+  sustituto, lo que hay que fijar en la configuración es el que ha contestado,
+  no el alias que se pidió: dejar el alias hace pagar una petición fallida en
+  cada mensaje.
+- **Ese 404 se repetía en cada turno.** El sustituto se recuerda durante la
+  vida del proceso, así que el viaje perdido se paga una vez y no siempre.
+
+### Cambiado
+
+- El diagnóstico lista todos los modelos que funcionan, no solo el sugerido, y
+  para sugerir prefiere el de más parámetros cuando el nombre lo indica
+  (`120b` antes que `7b`) en lugar del primero por orden alfabético.
+
+---
+
 ## [1.1.5] — 2026-09-07
 
 ### Corregido

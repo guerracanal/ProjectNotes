@@ -79,12 +79,29 @@ const RESET = color ? '\x1b[0m' : '';
 const PROMPT = 'Responde únicamente con la palabra: listo';
 const TIMEOUT_MS = 45_000;
 
+/**
+ * Cuál de los que funcionan proponer.
+ *
+ * No hay forma de medir la calidad desde aquí, pero cuando el nombre lleva el
+ * tamaño (7b, 20b, 120b) el mayor suele ser el más capaz, y es mejor punto de
+ * partida que el primero por orden alfabético. Si ningún nombre lo dice, se
+ * respeta el orden del catálogo.
+ */
+function suggestModel(ids) {
+  const size = (id) => {
+    const match = id.match(/(\d+(?:\.\d+)?)\s*b\b/i);
+    return match ? parseFloat(match[1]) : 0;
+  };
+  return [...ids].sort((a, b) => size(b) - size(a))[0];
+}
+
 async function tryModel(provider, config, modelId) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const started = Date.now();
 
   let text = '';
+  let served = modelId;
   const notices = [];
 
   try {
@@ -99,10 +116,13 @@ async function tryModel(provider, config, modelId) {
     })) {
       if (event.type === 'delta') text += event.text;
       if (event.type === 'notice') notices.push(event.text);
+      // Un modelo retirado se redirige a su sustituto: lo que hay que fijar en
+      // la configuración es el que ha contestado, no el alias que se pidió.
+      if (event.type === 'done' && event.model) served = event.model;
     }
-    return { ok: true, ms: Date.now() - started, text: text.trim(), notices };
+    return { ok: true, ms: Date.now() - started, text: text.trim(), served, notices };
   } catch (error) {
-    return { ok: false, ms: Date.now() - started, error: error.message, notices };
+    return { ok: false, ms: Date.now() - started, error: error.message, served, notices };
   } finally {
     clearTimeout(timer);
   }
@@ -242,7 +262,8 @@ for (const id of targets) {
     const result = await tryModel(provider, config, model.id);
 
     if (result.ok) {
-      working.push(model.id);
+      // Se guarda el que ha respondido; si hubo redirección, no son el mismo.
+      if (!working.includes(result.served)) working.push(result.served);
       const preview = result.text.replace(/\s+/g, ' ').slice(0, 40) || '(vacío)';
       console.log(`${GREEN}✓${RESET} ${result.ms}ms  ${DIM}«${preview}»${RESET}`);
     } else {
@@ -256,8 +277,9 @@ for (const id of targets) {
   console.log(`\n  ${GREEN}${working.length} funcionan${RESET} · ${RED}${broken.length} fallan${RESET}`);
 
   if (working.length) {
+    console.log(`\n  Funcionan: ${working.join(', ')}`);
     console.log(`\n  Para fijar uno como predeterminado, en .env.local:`);
-    console.log(`    ${id.toUpperCase()}_MODEL=${working[0]}`);
+    console.log(`    ${id.toUpperCase()}_MODEL=${suggestModel(working)}`);
     console.log(`    CHAT_PROVIDER=${id}`);
   } else if (!testAll && models.length > sample.length) {
     console.log(
