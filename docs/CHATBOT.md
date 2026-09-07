@@ -20,8 +20,15 @@ junto al ámbito de búsqueda.
 | **Anthropic (Claude)** | De pago | `ANTHROPIC_API_KEY` | <https://console.anthropic.com/> |
 | **OpenAI** | De pago | `OPENAI_API_KEY` | <https://platform.openai.com/api-keys> |
 
-Puedes definir varias a la vez. `CHAT_PROVIDER` decide cuál se usa por defecto;
-si no lo indicas, se usa el primero que esté configurado.
+Puedes definir varias a la vez. `CHAT_PROVIDER` decide cuál se usa por defecto y
+admite una lista de preferencias, no solo un valor:
+
+```bash
+CHAT_PROVIDER=gemini, groq, ollama
+```
+
+Se usa el primero que esté configurado. Si no lo indicas, el primero que lo
+esté. `npm run doctor` avisa si alguna entrada no corresponde a un proveedor.
 
 Los modelos de cada proveedor **se consultan en vivo**, no están escritos en el
 código: estos catálogos cambian con frecuencia y una lista fija acaba ofreciendo
@@ -328,6 +335,15 @@ de salida cortos. La app te lo dirá explícitamente. Prueba con un modelo
 asistente.
 
 **No sé qué modelos me sirven** — `npm run doctor` los prueba todos y te lo dice.
+
+**El doctor dice «sin configurar» pero la app sí funciona** — mira que la
+variable esté en `.env.local` y no solo en el entorno de tu terminal. El
+diagnóstico imprime de qué fichero ha leído y cuántas variables ha aplicado; si
+dice 0, el fichero está donde no toca o tiene otro nombre.
+
+**Ollama responde con un modelo distinto al que pedí** — el predeterminado es
+solo una suposición. Si no lo tienes descargado se usa el primero disponible y
+se avisa. Para tener el que quieres: `ollama pull <modelo>`.
 
 **El asistente no ve un fichero nuevo** — reconstruye el índice desde el botón de
 la barra lateral, o `POST /api/knowledge`. La huella debería detectarlo sola;

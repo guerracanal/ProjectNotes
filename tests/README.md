@@ -11,6 +11,7 @@ npm run test          # todo lo que no necesita un navegador
 | Fichero | Qué cubre | Necesita |
 |---|---|---|
 | `../scripts/tests/test_transcribir.py` | Agrupado de segmentos de Whisper y formato de tiempos | Python |
+| `env.test.mjs` | Lectura de `.env`: CRLF, BOM, comillas, `export`, comentarios | Node |
 | `providers.test.mjs` | Los cinco adaptadores de chat: forma de la petición, parseo del stream, errores y cancelación | Node |
 | `prompt.test.mjs` | Que el contexto lleve al modelo el minuto de cada fragmento hablado | Node |
 | `mock-providers.mjs` | Servidores simulados que hablan cada protocolo (SSE de OpenAI, SSE de Gemini, JSON por líneas de Ollama) | — |

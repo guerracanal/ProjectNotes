@@ -17,7 +17,8 @@ src = src.replace("import Anthropic from '@anthropic-ai/sdk';", 'const Anthropic
 writeFileSync(join(dir, 'providers.mjs'), src);
 // import() dinámico necesita una URL file://: en Windows una ruta como C:\...
 // se interpreta como el protocolo "c:" y falla.
-const { getProvider } = await import(pathToFileURL(join(dir, 'providers.mjs')).href);
+const { getProvider, defaultProviderId, preferredProviderIds, unknownPreferredProviders } =
+  await import(pathToFileURL(join(dir, 'providers.mjs')).href);
 
 const failures = [];
 const check = (label, ok, detail = '') => {
@@ -199,6 +200,55 @@ console.log('\nCancellation');
     name = e.name;
   }
   check('an aborted request rejects with AbortError', name === 'AbortError', name);
+}
+
+// ------------------------------------------------- CHAT_PROVIDER
+console.log('\nCHAT_PROVIDER');
+{
+  const original = { ...process.env };
+  const reset = () => {
+    for (const key of ['CHAT_PROVIDER', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY']) {
+      delete process.env[key];
+    }
+  };
+
+  reset();
+  process.env.CHAT_PROVIDER = 'groq';
+  process.env.GROQ_API_KEY = 'k';
+  check('un solo proveedor', defaultProviderId() === 'groq');
+
+  // Lo que escribió el usuario: una lista, con mayúscula y espacios.
+  reset();
+  process.env.CHAT_PROVIDER = 'Gemini, groq, ollama';
+  process.env.GEMINI_API_KEY = 'k';
+  check('acepta una lista de preferencias', defaultProviderId() === 'gemini');
+  check('no distingue mayúsculas',
+    preferredProviderIds()[0] === 'gemini', JSON.stringify(preferredProviderIds()));
+
+  // Si el primero de la lista no está configurado, pasa al siguiente.
+  reset();
+  process.env.CHAT_PROVIDER = 'Gemini, groq';
+  process.env.GROQ_API_KEY = 'k';
+  check('salta al siguiente si el primero no está configurado',
+    defaultProviderId() === 'groq', defaultProviderId());
+
+  reset();
+  process.env.CHAT_PROVIDER = 'inventado, groq';
+  process.env.GROQ_API_KEY = 'k';
+  check('ignora entradas desconocidas', defaultProviderId() === 'groq');
+  check('pero las reporta para poder avisar',
+    unknownPreferredProviders().includes('inventado'),
+    JSON.stringify(unknownPreferredProviders()));
+
+  reset();
+  process.env.GEMINI_API_KEY = 'k';
+  check('sin CHAT_PROVIDER usa el primero configurado', defaultProviderId() === 'gemini');
+
+  reset();
+  check('sin nada configurado devuelve null', defaultProviderId() === null);
+
+  reset();
+  Object.assign(process.env, original);
 }
 
 console.log();

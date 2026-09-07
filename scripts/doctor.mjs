@@ -13,26 +13,15 @@
  * Las claves se leen de .env.local (o .env). Nunca se imprimen.
  */
 
-import { readFileSync, writeFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadEnvFiles } from './lib/load-env.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-// --- carga de .env ---------------------------------------------------------
-
-for (const file of ['.env.local', '.env']) {
-  const path = join(ROOT, file);
-  if (!existsSync(path)) continue;
-
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-    if (!match) continue;
-    const value = match[2].trim().replace(/^["']|["']$/g, '');
-    if (value && !process.env[match[1]]) process.env[match[1]] = value;
-  }
-}
+const envFiles = loadEnvFiles(ROOT);
 
 // --- carga del registro de proveedores sin pasar por Next ------------------
 
@@ -58,9 +47,14 @@ const source = readFileSync(join(ROOT, 'src/lib/knowledge/providers.js'), 'utf8'
 writeFileSync(join(dir, 'providers.mjs'), source);
 // import() dinámico necesita una URL file://: en Windows una ruta como
 // C:\... se interpreta como el protocolo "c:" y falla.
-const { PROVIDER_IDS, getProvider, isConfigured, providerConfig } = await import(
-  pathToFileURL(join(dir, 'providers.mjs')).href
-);
+const {
+  PROVIDER_IDS,
+  getProvider,
+  isConfigured,
+  providerConfig,
+  defaultProviderId,
+  unknownPreferredProviders,
+} = await import(pathToFileURL(join(dir, 'providers.mjs')).href);
 
 // --- utilidades ------------------------------------------------------------
 
@@ -108,6 +102,25 @@ async function tryModel(provider, config, modelId) {
 }
 
 // --- ejecución -------------------------------------------------------------
+
+if (envFiles.length) {
+  for (const { file, keys, applied } of envFiles) {
+    console.log(`${DIM}${file}: ${keys.length} variables, ${applied} aplicadas${RESET}`);
+  }
+} else {
+  console.log(`${YELLOW}No se encontró ningún .env.local ni .env en ${ROOT}${RESET}`);
+}
+
+const unknown = unknownPreferredProviders();
+if (unknown.length) {
+  console.log(
+    `${YELLOW}CHAT_PROVIDER menciona ${unknown.map((u) => `«${u}»`).join(', ')}, ` +
+      `que no corresponde a ningún proveedor. Válidos: ${PROVIDER_IDS.join(', ')}.${RESET}`
+  );
+}
+
+const active = defaultProviderId();
+console.log(`${DIM}Proveedor por defecto: ${active || 'ninguno'}${RESET}`);
 
 const targets = PROVIDER_IDS.filter((id) => (only.length ? only.includes(id) : true));
 let anyConfigured = false;

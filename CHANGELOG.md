@@ -7,6 +7,35 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.1.3] — 2026-09-07
+
+### Corregido
+
+- **`npm run doctor` no veía las claves de un `.env.local` guardado en
+  Windows.** Su lector partía el fichero solo por `\n`, dejando un `\r` al
+  final de cada línea; como en JavaScript `\r` es un terminador de línea, la
+  expresión regular no llegaba a hacer match y descartaba **todas** las
+  variables en silencio. Los proveedores aparecían como «sin configurar» aunque
+  la aplicación sí funcionase, porque Next usa su propio lector.
+- El lector de `.env` pasa a un módulo propio y tolera lo que la gente escribe
+  de verdad: CRLF, BOM, comillas, `export` delante, comentarios al final de
+  línea y espacios sueltos. Con pruebas.
+
+### Añadido
+
+- **`CHAT_PROVIDER` acepta una lista de preferencias**, no solo un valor:
+  `CHAT_PROVIDER=gemini, groq, ollama` usa el primero que esté configurado.
+  No distingue mayúsculas y el diagnóstico avisa de las entradas que no
+  corresponden a ningún proveedor.
+- **Ollama usa un modelo que tengas descargado.** El predeterminado no era más
+  que una suposición (`llama3.2`) y devolvía un 404 si no estaba; ahora, si no
+  está instalado, se usa el primero disponible y se avisa de cómo descargar el
+  que se pedía.
+- El diagnóstico muestra de qué fichero salen las variables, cuántas ha
+  aplicado y qué proveedor queda por defecto.
+
+---
+
 ## [1.1.2] — 2026-09-07
 
 ### Corregido

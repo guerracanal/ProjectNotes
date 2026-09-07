@@ -421,12 +421,29 @@ const PROVIDERS = {
 
     async *stream({ system, messages, model, baseUrl, signal }) {
       const root = baseUrl || 'http://127.0.0.1:11434';
+
+      // The configured default is only a guess about what the user has pulled.
+      // If it is not installed, use something that is rather than 404.
+      let effectiveModel = model;
+      try {
+        const installed = await PROVIDERS.ollama.listModels({ baseUrl });
+        if (installed.length && !installed.some((m) => m.id === model)) {
+          effectiveModel = installed[0].id;
+          yield {
+            type: 'notice',
+            text: `«${model}» no está descargado en Ollama. Se ha usado «${effectiveModel}». Para descargarlo: ollama pull ${model}`,
+          };
+        }
+      } catch {
+        // Si no se puede listar, seguir e informar del fallo real de la llamada.
+      }
+
       const res = await fetch(`${root}/api/chat`, {
         method: 'POST',
         signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model,
+          model: effectiveModel,
           stream: true,
           messages: [{ role: 'system', content: system }, ...messages],
         }),
@@ -451,10 +468,10 @@ const PROVIDERS = {
       }
 
       if (!produced) {
-        throw new Error(`«${model}» no devolvió ninguna respuesta. ¿Está descargado el modelo?`);
+        throw new Error(`«${effectiveModel}» no devolvió ninguna respuesta. ¿Está descargado el modelo?`);
       }
 
-      yield { type: 'done', usage };
+      yield { type: 'done', model: effectiveModel, usage };
     },
   },
 };
@@ -492,13 +509,35 @@ export function isConfigured(id) {
 }
 
 /**
- * The provider to use when the request does not name one.
- * An explicit CHAT_PROVIDER wins; otherwise the first configured one, in the
- * order they are declared above.
+ * Parse CHAT_PROVIDER into an ordered preference list.
+ *
+ * A single id is the common case, but a comma-separated list reads naturally
+ * enough that people write one — so honour it: the first entry that is
+ * actually configured wins. Case and spacing are forgiven.
+ */
+export function preferredProviderIds() {
+  return (process.env.CHAT_PROVIDER || '')
+    .split(/[,\s]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Entries of CHAT_PROVIDER that name no provider we know about. */
+export function unknownPreferredProviders() {
+  return preferredProviderIds().filter((id) => !PROVIDERS[id]);
+}
+
+/**
+ * The provider to use when the request does not name one: the first entry of
+ * CHAT_PROVIDER that is configured, else the first configured provider in
+ * declaration order.
  */
 export function defaultProviderId() {
-  const preferred = (process.env.CHAT_PROVIDER || '').toLowerCase();
-  if (preferred && isConfigured(preferred)) return preferred;
+  for (const id of preferredProviderIds()) {
+    if (PROVIDERS[id] && isConfigured(id)) return id;
+  }
+  // Ollama is skipped in the implicit fallback: it is "configured" whenever it
+  // needs no key, even when nothing is listening on the port.
   return PROVIDER_IDS.find((id) => id !== 'ollama' && isConfigured(id)) || null;
 }
 
