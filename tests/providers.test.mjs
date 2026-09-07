@@ -145,6 +145,21 @@ console.log('\nGemini — fallos que reportó el usuario');
   }
   check('a blocked prompt says so', /bloqueó|SAFETY/.test(blockedError), blockedError);
 
+  // 4a-bis. El caso real: Gemini separa sus eventos con CRLF y no manda
+  //          [DONE]. Con el lector anterior no se separaba ni un fragmento y
+  //          la respuesta entera se perdía sin error.
+  let crlfText = '';
+  let crlfDone = null;
+  for await (const event of gemini.stream({
+    system, messages, model: 'gemini-crlf', apiKey: 'gk', baseUrl: ROOT, maxTokens: 100,
+  })) {
+    if (event.type === 'delta') crlfText += event.text;
+    if (event.type === 'done') crlfDone = event;
+  }
+  check('lee un stream separado con CRLF', crlfText === 'listo', JSON.stringify(crlfText));
+  check('y el último fragmento aunque no venga [DONE]',
+    crlfDone?.usage?.thinking === 141, JSON.stringify(crlfDone?.usage));
+
   // 4b. A stream that carries nothing at all is a different problem from one
   //     that carries frames without text, and the message must say which.
   let silentError = '';

@@ -15,10 +15,10 @@ function body(req) {
   });
 }
 
-function sse(res, frames) {
+function sse(res, frames, { eol = '\n', done = true } = {}) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-  for (const frame of frames) res.write(`data: ${JSON.stringify(frame)}\n\n`);
-  res.write('data: [DONE]\n\n');
+  for (const frame of frames) res.write(`data: ${JSON.stringify(frame)}${eol}${eol}`);
+  if (done) res.write(`data: [DONE]${eol}${eol}`);
   res.end();
 }
 
@@ -110,6 +110,32 @@ export function startMock(port) {
           usageMetadata: { promptTokenCount: 1200, candidatesTokenCount: 0, thoughtsTokenCount: 4000 },
         },
       ]);
+      return;
+    }
+
+    // Gemini frames its events with CRLF and ends without a [DONE] marker.
+    // This is the exact shape that made every Gemini model look mute: the
+    // reader never separated a frame and dropped the lot.
+    if (url.pathname.includes('gemini-crlf:streamGenerateContent')) {
+      sse(
+        res,
+        [
+          {
+            candidates: [{ content: { parts: [{ text: 'listo' }], role: 'model' }, index: 0 }],
+            usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 2, thoughtsTokenCount: 141 },
+          },
+          {
+            candidates: [
+              {
+                content: { parts: [{ text: '', thoughtSignature: 'Epk...' }], role: 'model' },
+                finishReason: 'STOP',
+                index: 0,
+              },
+            ],
+          },
+        ],
+        { eol: '\r\n', done: false }
+      );
       return;
     }
 

@@ -199,6 +199,12 @@ diferencia que `/api/chat` tiene que conocer.
 Los catálogos de modelos se consultan en vivo, nunca se escriben en el código:
 cambian a menudo y una lista fija acaba ofreciendo modelos retirados.
 
+El lector de SSE (`readSse`) tiene dos detalles que parecen quisquillosos y no
+lo son: separa los eventos con `/\r?\n\r?\n/` y procesa lo que quede en el
+búfer al terminar. Gemini usa CRLF —`\n\n` no aparece dentro de `CR LF CR LF`,
+así que partir por ahí no separa nada y se pierde la respuesta entera sin dar
+error— y muchos proveedores no cierran el último evento con una línea en blanco.
+
 Dos trampas de Gemini que ya están contempladas, y que conviene no deshacer:
 
 - Su catálogo **incluye modelos que la API luego rechaza** con un 404 para

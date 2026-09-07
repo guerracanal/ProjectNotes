@@ -7,6 +7,24 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.1.5] — 2026-09-07
+
+### Corregido
+
+- **Ningún modelo de Gemini contestaba.** Gemini separa los eventos de su
+  stream con `\r\n\r\n`, y el lector partía por `\n\n`. Esa secuencia no
+  existe dentro de `CR LF CR LF`, así que no se separaba jamás un fragmento:
+  todo se acumulaba en el búfer y el búfer se descartaba al terminar el stream.
+  El resultado era una respuesta vacía sin ningún error, porque técnicamente la
+  petición iba bien. Groq y OpenAI usan `\n\n`, y por eso sí funcionaban.
+- El último evento de un stream, que suele llegar sin línea en blanco detrás,
+  ya no se pierde: al terminar se procesa lo que quede en el búfer. Afectaba
+  igual a los proveedores compatibles con OpenAI y a Ollama.
+- Un evento con varias líneas `data:` se une antes de interpretarlo, como manda
+  la especificación de SSE, en vez de intentar leer cada línea por separado.
+
+---
+
 ## [1.1.4] — 2026-09-07
 
 Mejoras salidas de probar el diagnóstico contra catálogos reales de Gemini y

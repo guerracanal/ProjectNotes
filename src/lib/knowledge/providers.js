@@ -41,32 +41,62 @@ export function isConversationalModel(id) {
   return !NON_CHAT_MODEL.test(id);
 }
 
-/** Read an SSE body and yield each `data:` payload, skipping the [DONE] marker. */
+/**
+ * Read an SSE body and yield each `data:` payload, skipping the [DONE] marker.
+ *
+ * Two details that are easy to get wrong and fail silently:
+ *
+ * - Events are separated by a blank line, which may be CRLF. Splitting on
+ *   `\n\n` alone never matches `\r\n\r\n` (there are no two consecutive
+ *   newlines in CR LF CR LF), so with a CRLF server nothing ever separates,
+ *   everything piles up in the buffer, and the whole response is lost without
+ *   an error. Gemini frames this way; Groq and OpenAI do not.
+ * - The last event often arrives without a trailing blank line, so whatever
+ *   remains in the buffer when the stream ends still has to be parsed.
+ */
 async function* readSse(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+
+  // Per the SSE spec an event may carry several `data:` lines, joined with a
+  // newline, so collect them and parse the frame once.
+  const parseFrame = (frame) => {
+    const payload = frame
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n')
+      .trim();
+
+    if (!payload || payload === '[DONE]') return null;
+
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return null; // a partial or non-JSON frame
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split('\n\n');
+
+    const frames = buffer.split(/\r?\n\r?\n/);
     buffer = frames.pop() ?? '';
 
     for (const frame of frames) {
-      for (const line of frame.split('\n')) {
-        if (!line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (!payload || payload === '[DONE]') continue;
-        try {
-          yield JSON.parse(payload);
-        } catch {
-          /* a partial or non-JSON frame — the next read will carry the rest */
-        }
-      }
+      const event = parseFrame(frame);
+      if (event) yield event;
     }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    const event = parseFrame(buffer);
+    if (event) yield event;
   }
 }
 
@@ -81,7 +111,7 @@ async function* readNdjson(response) {
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
+    const lines = buffer.split(/\r?\n/);
     buffer = lines.pop() ?? '';
 
     for (const line of lines) {
@@ -92,6 +122,16 @@ async function* readNdjson(response) {
       } catch {
         /* ignore a malformed line rather than abort the stream */
       }
+    }
+  }
+
+  // The final line often arrives without a trailing newline.
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    try {
+      yield JSON.parse(buffer.trim());
+    } catch {
+      /* ignore */
     }
   }
 }
