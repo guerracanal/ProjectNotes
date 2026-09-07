@@ -1,13 +1,18 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 import { retrieve } from '@/lib/knowledge/retrieve';
 import { ASSISTANT_INSTRUCTIONS, buildContextBlock } from '@/lib/knowledge/prompt';
+import {
+    defaultProviderId,
+    getProvider,
+    isConfigured,
+    providerConfig,
+} from '@/lib/knowledge/providers';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5';
 const MAX_HISTORY_TURNS = 12;
+const MAX_TOKENS = 4000;
 
 function sse(event, data) {
     return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -21,25 +26,45 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Cuerpo de la petición inválido' }, { status: 400 });
     }
 
-    const { message, history = [], scope = null, topK = 8 } = body;
+    const { message, history = [], scope = null, topK = 8, provider: requestedProvider, model } = body;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
         return NextResponse.json({ error: 'El mensaje es obligatorio' }, { status: 400 });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const providerId = requestedProvider || defaultProviderId();
+
+    if (!providerId) {
         return NextResponse.json(
             {
-                error: 'missing_api_key',
+                error: 'no_provider',
                 message:
-                    'Falta ANTHROPIC_API_KEY. Copia .env.example a .env.local y añade tu clave para activar el chatbot.',
+                    'No hay ningún proveedor de chat configurado. Copia .env.example a .env.local y añade una clave: Gemini y Groq tienen plan gratuito.',
             },
             { status: 503 }
         );
     }
 
-    // Retrieve before streaming so a retrieval failure returns a clean HTTP error
-    // instead of dying halfway through an already-open stream.
+    const provider = getProvider(providerId);
+    if (!provider) {
+        return NextResponse.json(
+            { error: 'unknown_provider', message: `Proveedor desconocido: ${providerId}` },
+            { status: 400 }
+        );
+    }
+
+    if (!isConfigured(providerId)) {
+        return NextResponse.json(
+            {
+                error: 'missing_api_key',
+                message: `Falta ${provider.envKey} para usar ${provider.label}. Añádela a .env.local.`,
+            },
+            { status: 503 }
+        );
+    }
+
+    // Retrieve before opening the stream, so a retrieval failure is a clean
+    // HTTP error rather than a half-written answer.
     let retrieval;
     try {
         retrieval = await retrieve(message, {
@@ -54,18 +79,15 @@ export async function POST(request) {
         );
     }
 
-    const client = new Anthropic();
+    const config = providerConfig(providerId);
+    const contextBlock = buildContextBlock(retrieval.hits);
 
-    // Keep the frozen instructions in their own cacheable block; the retrieved
-    // context changes every turn, so it goes after the breakpoint.
-    const system = [
-        {
-            type: 'text',
-            text: ASSISTANT_INSTRUCTIONS,
-            cache_control: { type: 'ephemeral' },
-        },
-        { type: 'text', text: buildContextBlock(retrieval.hits) },
-    ];
+    // Anthropic takes the two halves separately so the instructions can carry a
+    // cache breakpoint; every other provider takes one system string.
+    const system =
+        providerId === 'anthropic'
+            ? { instructions: ASSISTANT_INSTRUCTIONS, context: contextBlock }
+            : `${ASSISTANT_INSTRUCTIONS}\n\n${contextBlock}`;
 
     const messages = [
         ...history
@@ -77,13 +99,20 @@ export async function POST(request) {
     ];
 
     const encoder = new TextEncoder();
+    const abortController = new AbortController();
+    // Stop paying for tokens the moment the browser goes away.
+    request.signal?.addEventListener('abort', () => abortController.abort());
 
     const stream = new ReadableStream({
         async start(controller) {
-            const send = (event, data) => controller.enqueue(encoder.encode(sse(event, data)));
+            let closed = false;
+            const send = (event, data) => {
+                if (closed) return;
+                controller.enqueue(encoder.encode(sse(event, data)));
+            };
 
-            // Send the sources first so the UI can render citation chips while
-            // the answer is still being generated.
+            // Sources first, so the citation chips are on screen while the
+            // answer is still being generated.
             send('sources', {
                 sources: retrieval.hits.map((hit, i) => ({
                     ref: i + 1,
@@ -92,57 +121,59 @@ export async function POST(request) {
                     title: hit.title,
                     heading: hit.heading,
                     excerpt: hit.excerpt,
-                    // Transcript hits deep-link into the recording.
                     start: hit.start ?? null,
                     media: hit.media ?? null,
                 })),
                 semantic: retrieval.semanticUsed,
                 totalChunks: retrieval.totalChunks,
+                provider: providerId,
+                model: model || config.model,
             });
 
             try {
-                const anthropicStream = client.messages.stream({
-                    model: MODEL,
-                    max_tokens: 8000,
-                    thinking: { type: 'adaptive' },
-                    output_config: { effort: 'medium' },
+                const iterator = provider.stream({
                     system,
                     messages,
+                    model: model || config.model,
+                    apiKey: config.apiKey,
+                    baseUrl: config.baseUrl,
+                    maxTokens: MAX_TOKENS,
+                    signal: abortController.signal,
                 });
 
-                for await (const event of anthropicStream) {
-                    if (
-                        event.type === 'content_block_delta' &&
-                        event.delta.type === 'text_delta'
-                    ) {
-                        send('delta', { text: event.delta.text });
+                for await (const event of iterator) {
+                    if (event.type === 'delta') {
+                        send('delta', { text: event.text });
+                    } else if (event.type === 'done') {
+                        if (event.stopReason === 'refusal') {
+                            send('error', {
+                                message:
+                                    'El modelo declinó responder a esta petición. Reformúlala o consulta las fuentes directamente.',
+                            });
+                        }
+                        send('done', {
+                            usage: event.usage ?? null,
+                            provider: providerId,
+                            model: event.model || model || config.model,
+                            stopReason: event.stopReason ?? null,
+                        });
                     }
                 }
-
-                const final = await anthropicStream.finalMessage();
-
-                if (final.stop_reason === 'refusal') {
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error(`[chat] ${providerId} stream failed:`, error);
                     send('error', {
-                        message:
-                            'El modelo declinó responder a esta petición. Reformúlala o consulta las fuentes directamente.',
+                        message: error?.message || `Error al contactar con ${provider.label}`,
                     });
                 }
-
-                send('done', {
-                    usage: {
-                        input: final.usage?.input_tokens ?? null,
-                        output: final.usage?.output_tokens ?? null,
-                        cacheRead: final.usage?.cache_read_input_tokens ?? null,
-                    },
-                    model: final.model,
-                    stopReason: final.stop_reason,
-                });
-            } catch (error) {
-                console.error('[chat] streaming failed:', error);
-                send('error', { message: error?.message || 'Error al contactar con el modelo' });
             } finally {
+                closed = true;
                 controller.close();
             }
+        },
+
+        cancel() {
+            abortController.abort();
         },
     });
 

@@ -20,11 +20,13 @@ nada de nube obligatoria.
   Anídalas como quieras.
 - **Notas en markdown**, con editor, vista previa y barra de formato.
 - **Tareas** en `tasks.md` estándar, con vista agregada de todo lo pendiente.
-- **Reuniones**: suelta un vídeo en la carpeta, transcríbelo con Whisper en local
-  y resume la transcripción con Gemini.
+- **Reuniones**: suelta un vídeo o un audio en la carpeta y transcríbelo con
+  Whisper en local. La transcripción queda **navegable**: pulsa cualquier línea
+  y la grabación salta a ese momento.
 - **Búsqueda global** sobre el texto de todas las notas y transcripciones (`⌘K`).
-- **Asistente** que responde preguntas sobre tu contenido **citando el fichero
-  concreto** del que sale cada afirmación.
+- **Asistente** que responde sobre tu contenido **citando la fuente** — y el
+  **minuto exacto** cuando lo dicho viene de una reunión. Funciona con
+  proveedores gratuitos (Gemini, Groq) o en local con Ollama.
 - **Instalable** en móvil, tablet y escritorio como PWA, con ruta documentada
   para generar un APK de Android.
 - **Sincronización bidireccional** opcional con Google Drive.
@@ -47,11 +49,21 @@ todo el trabajo con ficheros no necesitan ninguna clave.
 
 ```bash
 cp .env.example .env.local
-# añade tu ANTHROPIC_API_KEY
 ```
 
-Sin clave la app funciona igual; solo el chat queda desactivado. La búsqueda
-sigue operativa porque el índice léxico no usa la red.
+Y añade **una** clave. Hay opciones gratuitas:
+
+| Proveedor | Coste | Clave |
+|---|---|---|
+| **Google Gemini** | Plan gratuito | <https://aistudio.google.com/apikey> |
+| **Groq** | Plan gratuito | <https://console.groq.com/keys> |
+| **Ollama** | Gratis y local | Ninguna: <https://ollama.com/> |
+| Anthropic (Claude) | De pago | <https://console.anthropic.com/> |
+| OpenAI | De pago | <https://platform.openai.com/api-keys> |
+
+Puedes configurar varios y cambiar de modelo desde el propio chat. Sin ninguno
+la app funciona igual; solo el chat queda desactivado, y la búsqueda sigue
+operativa porque el índice léxico no usa la red.
 
 ### Activar transcripción y resumen de reuniones
 
@@ -83,6 +95,7 @@ projects_data/
     ├── images/                                     → pestaña Imágenes
     ├── kickoff.mp4                                 → pestaña Reuniones
     ├── kickoff_transcripcion.txt                   →   su transcripción
+    ├── kickoff_transcripcion.json                  →   con marcas de tiempo
     ├── kickoff_transcripcion_resumen.txt           →   su resumen
     └── Subproyecto/                                → aparece como subproyecto
 ```
@@ -125,6 +138,10 @@ Indexa todos tus ficheros de texto — notas, listas de tareas y transcripciones
 y responde citando el fragmento del que sale cada afirmación. Si algo no está en
 tus notas, lo dice en vez de inventarlo.
 
+Cuando lo que cita se dijo en una reunión, la cita lleva el minuto: pulsarla
+abre la grabación exactamente en ese punto. Verificar una afirmación deja de ser
+leerse una transcripción entera.
+
 Por defecto la recuperación es **léxica (BM25)**: no necesita clave, ni red, ni
 descargar modelos, y acierta justo donde un modelo semántico suele fallar, con
 nombres de proyecto, siglas y nombres propios. Si quieres además recuperación
@@ -160,7 +177,8 @@ Activity con Bubblewrap, más un workflow de GitHub Actions ya preparado) en
 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de cambios |
 | [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) | Cómo encaja todo |
 | [`docs/UI-UX.md`](docs/UI-UX.md) | Sistema de diseño y decisiones de interfaz |
-| [`docs/CHATBOT.md`](docs/CHATBOT.md) | Indexado, recuperación y prompt |
+| [`docs/CHATBOT.md`](docs/CHATBOT.md) | Proveedores, indexado, recuperación y prompt |
+| [`docs/REUNIONES.md`](docs/REUNIONES.md) | Transcribir, leer y resumir grabaciones |
 | [`docs/PWA-Y-APK.md`](docs/PWA-Y-APK.md) | Instalación, offline y empaquetado Android |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Ideas de mejora priorizadas |
 
@@ -174,6 +192,7 @@ npm run build   # build de producción
 npm run start   # servir el build (necesario para probar el service worker)
 npm run lint    # linter
 npm run icons   # regenerar los iconos de la PWA
+npm run test    # pruebas de la lógica de transcripción
 ```
 
 ---

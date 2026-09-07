@@ -7,6 +7,85 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.1.0] — 2026-09-07
+
+Transcripciones navegables con marcas de tiempo, y un asistente que ya no está
+atado a un solo proveedor.
+
+### Añadido
+
+**Transcripciones con marcas de tiempo**
+- `transcribir_video.py` guarda además `<nombre>_transcripcion.json` con los
+  segmentos de Whisper, que hasta ahora se descartaban. El `.txt` se mantiene.
+- Los segmentos se agrupan en bloques legibles: se cierra un bloque al alcanzar
+  el tamaño objetivo, al terminar una frase, o ante un silencio de más de dos
+  segundos, que casi siempre marca un cambio de turno.
+- Flags `--model`, `--language`, `--no-json` y `--force`. El import de Whisper
+  es perezoso, así que la lógica de agrupado se puede probar sin instalarlo.
+- Pruebas de esa lógica en `scripts/tests/test_transcribir.py` (`npm run test`).
+
+**Lector de transcripciones**
+- Vista con la grabación y el texto en paralelo: pulsar cualquier línea salta a
+  ese momento, y la línea que suena se resalta y se centra sola.
+- El seguimiento automático se desactiva en cuanto el usuario hace scroll a
+  mano, y vuelve a activarse al pulsar una línea.
+- Búsqueda dentro de la transcripción con plegado de acentos y resaltado de las
+  coincidencias, y copia de un fragmento con su marca de tiempo.
+- Enlace profundo `?tab=meetings&media=<fichero>&t=<segundos>`.
+- Las grabaciones de audio (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`) cuentan
+  como reuniones.
+
+**Citas al minuto**
+- El índice trocea las transcripciones por segmentos, en bloques de alrededor de
+  un minuto para que la cita caiga cerca, y arrastra el instante y la grabación.
+- Cuando existe el `.json` se deja de indexar el `.txt` hermano: mismo
+  contenido, pero con marcas de tiempo.
+- El contexto del prompt anuncia el minuto de cada fragmento hablado, y las
+  instrucciones piden mencionarlo al citar.
+- Las fuentes del chat y los resultados de la paleta enlazan al lector en ese
+  segundo, y muestran el nombre de la grabación en vez del sidecar `.json`.
+
+**Varios proveedores de chat**
+- Registro de proveedores con una interfaz común: Anthropic, Google Gemini,
+  Groq, OpenAI y Ollama en local. `/api/chat` no sabe cuál responde.
+- **Opciones gratuitas**: Gemini y Groq tienen plan gratuito; Ollama es local y
+  gratis. Groq, OpenAI y cualquier pasarela compatible comparten una sola
+  implementación.
+- Selector de modelo en el propio chat, con los catálogos consultados en vivo a
+  cada proveedor en lugar de escritos en el código.
+- Los proveedores sin configurar se listan igualmente, indicando qué falta y con
+  un enlace para conseguir la clave.
+- `CHAT_PROVIDER` fija el predeterminado; si no, se usa el primero configurado.
+- Adaptadores probados contra servidores simulados que hablan cada protocolo.
+- Si el navegador cancela la petición, el stream se aborta hacia el proveedor.
+
+### Corregido
+
+- `resumen_transcripcion.py` tenía la clave escrita a fuego como la cadena
+  `'API_KEY'`, así que `GEMINI_API_KEY` nunca se usaba y toda llamada fallaba
+  con un error de autenticación poco claro.
+- Al llegar desde una cita, el lector saltaba al momento correcto pero no
+  resaltaba nada: el único `timeupdate` se disparaba antes de que la
+  transcripción hubiera cargado, y una grabación en pausa no emite más.
+- El resalte automático usaba `scrollIntoView`, que desplaza también a los
+  contenedores ancestros: la página entera se metía bajo la barra superior.
+  Ahora se mueve solo el scroll de la lista.
+- Pulsar `Escape` para cerrar el selector de modelo cerraba además el panel del
+  asistente entero.
+- El selector de modelo se abría hacia arriba, fuera de la pantalla, estando su
+  disparador en la parte superior del panel.
+- El selector ignoraba el modelo configurado por entorno y elegía el primero del
+  catálogo.
+- `google-generativeai` faltaba en `requirements.txt`.
+
+### Cambiado
+
+- El resumen de reuniones produce markdown estructurado (resumen, puntos clave,
+  decisiones, próximos pasos) y pide señalar lo que parezca mal transcrito.
+- `.env.example` reordenado por proveedor, señalando cuáles son gratuitos.
+
+---
+
 ## [1.0.0] — 2026-09-07
 
 Rediseño completo de la interfaz, asistente conversacional sobre el contenido

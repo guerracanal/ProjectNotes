@@ -15,6 +15,8 @@ export const DEFAULT_SETTINGS = {
   // Assistant
   assistantScope: 'all', // 'all' | 'project'
   assistantTopK: 8,
+  chatProvider: null, // null = adopt whatever the server has configured
+  chatModel: null,
 
   // Google Drive
   gdriveClientId: '',

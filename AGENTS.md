@@ -40,7 +40,7 @@ Consecuencias prácticas que **no** debes romper:
 | UI | React 19 + `styled-jsx` | Sin librería de componentes ni Tailwind |
 | Estilos | Tokens CSS en `src/app/globals.css` | Tema claro/oscuro/sistema |
 | Markdown | `react-markdown` + `remark-gfm` | |
-| Asistente | `@anthropic-ai/sdk`, modelo `claude-opus-5` | Streaming SSE |
+| Asistente | Anthropic, Gemini, Groq, OpenAI, Ollama | Un adaptador por proveedor, streaming SSE |
 | Recuperación | BM25 propio, embeddings opcionales | Sin base vectorial |
 | Transcripción | Whisper (Python, local) | `scripts/transcribir_video.py` |
 | Resumen | Gemini (Python) | `scripts/resumen_transcripcion.py` |
@@ -72,7 +72,8 @@ src/
       tree                ← Árbol de carpetas
       tasks/all           ← Tareas pendientes de todos los proyectos
       search              ← Búsqueda de texto completo
-      chat                ← Asistente RAG (SSE)
+      chat                ← Asistente RAG (SSE), sea cual sea el proveedor
+      models              ← Proveedores configurados y sus modelos
       knowledge           ← Estado y reconstrucción del índice
       transcribe          ← Lanza Whisper, devuelve un jobId
       summarize           ← Lanza Gemini, devuelve un jobId
@@ -82,11 +83,14 @@ src/
     Sidebar / Topbar / MobileNav / CommandPalette
     chat/                 ← Panel del asistente y lista de fuentes
     project/              ← Una pestaña por fichero
+      TranscriptReader.js ← Transcripción navegable sincronizada con el vídeo
     ui/                   ← Icon, Modal, ConfirmDialog, EmptyState, Skeleton
   contexts/               ← Theme, Toast, Settings, Sidebar
   lib/
     fs-utils.js           ← ÚNICA puerta al disco. Todo pasa por getSafePath()
     knowledge/            ← Troceado, BM25, embeddings, recuperación, prompt
+      providers.js        ← Un adaptador por proveedor de chat, misma interfaz
+    transcript.js         ← Marcas de tiempo: parseo, formato, búsqueda binaria
     task-parser.js        ← Markdown de tareas ↔ objetos
     talks-parser.js       ← talks.md ↔ objetos
     gdrive.js             ← Cliente de Google Drive
@@ -175,8 +179,25 @@ pregunta → retrieve() ─┬→ BM25            ─┐
                                                                 │
         system = [instrucciones (cacheadas), contexto] ─────────┘
                                                                 │
-                       Claude (streaming) → SSE → ChatPanel + chips de fuente
+                    proveedor elegido (streaming) → SSE → ChatPanel
+                                                        + chips de fuente
 ```
+
+### 5.1 Proveedores
+
+`src/lib/knowledge/providers.js` es el único sitio que sabe de proveedores.
+Cada uno expone `listModels()` y `stream()`, así que `/api/chat` no sabe cuál
+está respondiendo. Añadir uno es añadir una entrada a ese objeto.
+
+Groq, OpenAI y cualquier pasarela compatible comparten una sola implementación
+(`openAiCompatible`): hablan el mismo protocolo y solo cambian la URL base.
+
+Anthropic recibe el `system` partido en dos bloques para poder poner el punto de
+caché en las instrucciones; el resto lo recibe como una sola cadena. Es la única
+diferencia que `/api/chat` tiene que conocer.
+
+Los catálogos de modelos se consultan en vivo, nunca se escriben en el código:
+cambian a menudo y una lista fija acaba ofreciendo modelos retirados.
 
 Decisiones y por qué:
 
@@ -187,10 +208,15 @@ Decisiones y por qué:
 - **RRF y no suma ponderada**: las puntuaciones BM25 y las similitudes coseno
   viven en escalas incomparables; lo único que ambos recuperadores comparten es
   el rango.
-- **El troceado distingue markdown de transcripción.** El markdown se parte por
-  encabezados y cada fragmento arrastra su rastro de títulos; las transcripciones
-  no tienen estructura, así que se usa una ventana deslizante sobre frases con
-  solapamiento, para que un dato partido en la frontera siga siendo recuperable.
+- **El troceado distingue tres tipos de documento.** El markdown se parte por
+  encabezados y cada fragmento arrastra su rastro de títulos. Las transcripciones
+  con marcas de tiempo se agrupan por segmentos en bloques de ~1 minuto, que
+  guardan su instante para que la cita apunte al momento y no al fichero. El
+  texto plano usa una ventana deslizante sobre frases con solapamiento, para que
+  un dato partido en la frontera siga siendo recuperable.
+- **Cuando hay `_transcripcion.json` se ignora el `.txt` hermano.** Es el mismo
+  contenido; indexar los dos duplicaría los resultados y perdería las marcas de
+  tiempo.
 - **Dos bloques de `system`**: las instrucciones son byte-estables y llevan el
   punto de caché; el contexto recuperado, que cambia en cada turno, va después.
 - **El prompt exige citar** con `[n]` y decir «no lo encuentro» antes que
@@ -212,8 +238,9 @@ Dentro de la carpeta de un proyecto:
 | `links.md` | Alimenta las pestañas Enlaces y Documentos |
 | `talks.md` | Hace aparecer la pestaña Charlas |
 | `images/` | Destino de las subidas de imágenes |
-| `<nombre>.mp4` | Una reunión |
+| `<nombre>.mp4` (o `.mp3`, `.m4a`…) | Una grabación |
 | `<nombre>_transcripcion.txt` | Su transcripción (generada por Whisper) |
+| `<nombre>_transcripcion.json` | Los segmentos con marcas de tiempo |
 | `<nombre>_transcripcion_resumen.txt` | Su resumen (generado por Gemini) |
 
 La convención de nombres de transcripción es **posicional**: el nombre base debe
@@ -229,6 +256,7 @@ npm install
 npm run dev        # http://localhost:3000
 npm run lint       # debe salir limpio: el compilador de React trata varios avisos como error
 npm run build      # debe compilar antes de dar nada por terminado
+npm run test       # pruebas de la lógica de transcripción (no necesitan Whisper)
 npm run icons      # regenera los iconos de la PWA
 ```
 
@@ -260,6 +288,14 @@ de cometer aquí (por eso existe `lib/file-kinds.js` en paralelo a `fs-utils.js`
   pestaña. Es deliberado: es un token OAuth.
 - **El idioma de la interfaz es el español.** Los comentarios de código y los
   nombres de identificadores están en inglés. Mantén esa separación.
+- **`scrollIntoView` arrastra a todos los contenedores con scroll**, incluida la
+  página. En el lector de transcripciones eso metía el panel bajo la barra
+  superior; por eso se mueve el `scrollTop` de la lista a mano cuando la lista es
+  la que tiene el scroll.
+- **Los eventos de `<video>`/`<audio>` no burbujean.** React los engancha
+  directamente al elemento, pero un `Escape` en un menú dentro del panel del
+  chat sí burbujea: si añades un popover ahí, corta la propagación o cerrarás
+  también el panel entero.
 
 ---
 

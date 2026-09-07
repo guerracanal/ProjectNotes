@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Icon from '../ui/Icon';
 import SourceList from './SourceList';
+import ModelPicker from './ModelPicker';
 import { useSettings } from '@/contexts/SettingsContext';
 
 const SUGGESTIONS = [
@@ -40,6 +41,33 @@ export default function ChatPanel({ isOpen, onClose }) {
   const abortRef = useRef(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+
+  const selection = useMemo(
+    () => ({ provider: settings.chatProvider || null, model: settings.chatModel || null }),
+    [settings.chatProvider, settings.chatModel]
+  );
+
+  // Adopt the server's default the first time the picker reports what is
+  // configured, so a fresh install starts on a working provider without the
+  // user having to choose one.
+  const onModelsLoaded = useCallback(
+    (payload) => {
+      if (settings.chatProvider) return;
+      const fallback =
+        payload.providers.find((p) => p.id === payload.active && p.available) ||
+        payload.providers.find((p) => p.available);
+      if (!fallback) return;
+
+      // Prefer the model the server is configured for; only fall back to the
+      // first of the catalogue when that one is not on offer.
+      const preferred = fallback.models.some((m) => m.id === fallback.defaultModel)
+        ? fallback.defaultModel
+        : fallback.models[0]?.id || fallback.defaultModel;
+
+      updateSettings({ chatProvider: fallback.id, chatModel: preferred });
+    },
+    [settings.chatProvider, updateSettings]
+  );
 
   const projectPath = currentProjectFrom(pathname);
   const scopeToProject = settings.assistantScope === 'project' && Boolean(projectPath);
@@ -113,6 +141,8 @@ export default function ChatPanel({ isOpen, onClose }) {
             history,
             scope: scopeToProject ? projectPath : null,
             topK: settings.assistantTopK,
+            provider: selection.provider,
+            model: selection.model,
           }),
         });
 
@@ -181,7 +211,16 @@ export default function ChatPanel({ isOpen, onClose }) {
         abortRef.current = null;
       }
     },
-    [input, streaming, messages, scopeToProject, projectPath, settings.assistantTopK]
+    [
+      input,
+      streaming,
+      messages,
+      scopeToProject,
+      projectPath,
+      settings.assistantTopK,
+      selection.provider,
+      selection.model,
+    ]
   );
 
   const clear = () => {
@@ -234,18 +273,31 @@ export default function ChatPanel({ isOpen, onClose }) {
         </header>
 
         <div className="chat-scope">
-          <Icon name="target" size={13} />
-          <span className="truncate">Ámbito: {scopeLabel}</span>
-          {projectPath && (
-            <button
-              className="btn btn-ghost btn-sm scope-btn"
-              onClick={() =>
-                updateSettings({ assistantScope: scopeToProject ? 'all' : 'project' })
-              }
-            >
-              {scopeToProject ? 'Ampliar a todo' : 'Limitar a este proyecto'}
-            </button>
-          )}
+          <button
+            className="scope-chip"
+            onClick={() =>
+              projectPath && updateSettings({ assistantScope: scopeToProject ? 'all' : 'project' })
+            }
+            disabled={!projectPath}
+            title={
+              projectPath
+                ? scopeToProject
+                  ? 'Buscar en todos los proyectos'
+                  : 'Buscar solo en este proyecto'
+                : 'Buscando en todos los proyectos'
+            }
+          >
+            <Icon name="target" size={12} />
+            <span className="truncate">{scopeLabel}</span>
+          </button>
+
+          <ModelPicker
+            value={selection}
+            onChange={(next) =>
+              updateSettings({ chatProvider: next.provider, chatModel: next.model })
+            }
+            onLoaded={onModelsLoaded}
+          />
         </div>
 
         <div className="chat-body" ref={scrollRef}>
@@ -417,22 +469,36 @@ export default function ChatPanel({ isOpen, onClose }) {
         .chat-scope {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           gap: var(--sp-2);
           padding: var(--sp-2) var(--sp-4);
           background: var(--surface-2);
           border-bottom: 1px solid var(--border);
-          font-size: var(--fs-xs);
+          flex-shrink: 0;
+        }
+
+        .scope-chip {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          min-width: 0;
+          max-width: 55%;
+          padding: 2px var(--sp-2);
+          border-radius: var(--r-full);
+          background: var(--surface-3);
           color: var(--text-muted);
-          flex-shrink: 0;
+          font-size: var(--fs-2xs);
+          font-weight: 600;
+          transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
         }
 
-        .chat-scope > span:first-of-type {
-          flex: 1;
+        .scope-chip:not(:disabled):hover {
+          background: var(--surface-hover);
+          color: var(--text);
         }
 
-        .scope-btn {
-          flex-shrink: 0;
-          color: var(--accent);
+        .scope-chip:disabled {
+          cursor: default;
         }
 
         .chat-body {

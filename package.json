@@ -1,13 +1,14 @@
 {
   "name": "project-note-agenda",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "test": "python3 scripts/tests/test_transcribir.py && node tests/providers.test.mjs && node tests/prompt.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
