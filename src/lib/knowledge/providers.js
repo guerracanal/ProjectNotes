@@ -125,10 +125,26 @@ function openAiCompatible({ id, label, envKey, baseUrl, defaultModel, free, docs
       await assertOk(res, label);
 
       let usage = null;
+      let produced = false;
+      let finishReason = null;
+
       for await (const event of readSse(res)) {
         const text = event.choices?.[0]?.delta?.content;
-        if (text) yield { type: 'delta', text };
+        if (text) {
+          produced = true;
+          yield { type: 'delta', text };
+        }
+        if (event.choices?.[0]?.finish_reason) finishReason = event.choices[0].finish_reason;
         if (event.usage) usage = event.usage;
+      }
+
+      // An empty answer with no error looks like a broken app; say what happened.
+      if (!produced) {
+        throw new Error(
+          finishReason === 'length'
+            ? `«${model}» se quedó sin presupuesto de salida antes de escribir nada.`
+            : `«${model}» no devolvió ninguna respuesta${finishReason ? ` (${finishReason})` : ''}. Prueba con otro modelo.`
+        );
       }
 
       yield {
@@ -142,6 +158,33 @@ function openAiCompatible({ id, label, envKey, baseUrl, defaultModel, free, docs
 }
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+
+// Floor for Gemini's output budget. Thinking tokens are drawn from the same
+// allowance as the answer, so a budget sized only for the answer can be spent
+// entirely on reasoning, leaving nothing to return.
+const GEMINI_MIN_OUTPUT_TOKENS = 8192;
+
+/** Explain, in the user's terms, why Gemini returned no text. */
+function geminiEmptyAnswerReason({ finishReason, blockReason, usage, model }) {
+  if (blockReason) {
+    return `Gemini bloqueó la petición (${blockReason}). Reformula la pregunta.`;
+  }
+
+  if (finishReason === 'MAX_TOKENS') {
+    const thinking = usage?.thoughtsTokenCount;
+    return (
+      `«${model}» agotó su presupuesto de salida razonando` +
+      (thinking ? ` (${thinking} tokens de razonamiento)` : '') +
+      ' y no llegó a escribir la respuesta. Prueba con un modelo «flash» o reduce el número de fragmentos recuperados.'
+    );
+  }
+
+  if (finishReason && finishReason !== 'STOP') {
+    return `Gemini terminó sin respuesta (${finishReason}).`;
+  }
+
+  return `«${model}» no devolvió ninguna respuesta. Prueba con otro modelo.`;
+}
 
 const PROVIDERS = {
   anthropic: {
@@ -221,54 +264,109 @@ const PROVIDERS = {
 
       return (data.models || [])
         .filter((model) => model.supportedGenerationMethods?.includes('generateContent'))
+        // The catalogue still lists retired models; when the description says
+        // so, keep them out of the picker. The ones it does not flag are
+        // caught at call time, where Google names the replacement.
+        .filter((model) => !/deprecat|discontinued|retired/i.test(model.description || ''))
         .map((model) => ({
           id: model.name.replace(/^models\//, ''),
           label: model.displayName || model.name.replace(/^models\//, ''),
         }))
-        // Embedding and legacy vision models only add noise to the picker.
+        // Embedding and media-generation models cannot hold a conversation.
         .filter((model) => !/embedding|aqa|imagen|veo/i.test(model.id))
         .sort((a, b) => a.id.localeCompare(b.id));
     },
 
     async *stream({ system, messages, model, apiKey, baseUrl, maxTokens, signal }) {
       const root = baseUrl || GEMINI_BASE_URL;
-      const url =
-        `${root}/models/${encodeURIComponent(model)}` +
-        `:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
 
-      const res = await fetch(url, {
-        method: 'POST',
-        signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          // Gemini calls the assistant role "model".
-          contents: messages.map((message) => ({
-            role: message.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: message.content }],
-          })),
-          generationConfig: { maxOutputTokens: maxTokens },
-        }),
-      });
+      const request = {
+        systemInstruction: { parts: [{ text: system }] },
+        // Gemini calls the assistant role "model".
+        contents: messages.map((message) => ({
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: message.content }],
+        })),
+        generationConfig: {
+          // Gemini 2.5 and later think before answering, and those thinking
+          // tokens come out of maxOutputTokens. With a tight budget the model
+          // can spend the lot reasoning and return no text at all — an empty
+          // answer with no error. Give it room for both.
+          maxOutputTokens: Math.max(maxTokens * 2, GEMINI_MIN_OUTPUT_TOKENS),
+        },
+      };
+
+      const call = (modelId) =>
+        fetch(
+          `${root}/models/${encodeURIComponent(modelId)}` +
+            `:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+          }
+        );
+
+      let effectiveModel = model;
+      let res = await call(effectiveModel);
+
+      // Google keeps retired models in the catalogue but refuses them for new
+      // accounts, naming the replacement in the error prose. Take it up.
+      if (res.status === 404) {
+        const detail = await res.text().catch(() => '');
+        const replacement = detail.match(/models\/([\w.-]+)\s+for the latest/)?.[1];
+
+        if (replacement && replacement !== effectiveModel) {
+          yield {
+            type: 'notice',
+            text: `El modelo «${effectiveModel}» ya no está disponible para cuentas nuevas. Se ha usado «${replacement}» en su lugar.`,
+          };
+          effectiveModel = replacement;
+          res = await call(effectiveModel);
+        } else {
+          throw new Error(`Gemini respondió 404${detail ? `: ${detail.slice(0, 400)}` : ''}`);
+        }
+      }
+
       await assertOk(res, 'Gemini');
 
       let usage = null;
+      let finishReason = null;
+      let blockReason = null;
+      let produced = false;
+
       for await (const event of readSse(res)) {
-        const parts = event.candidates?.[0]?.content?.parts;
-        if (parts) {
-          for (const part of parts) {
-            if (part.text) yield { type: 'delta', text: part.text };
+        const candidate = event.candidates?.[0];
+
+        for (const part of candidate?.content?.parts || []) {
+          // Reasoning parts are not the answer; never show them as one.
+          if (part.thought) continue;
+          if (part.text) {
+            produced = true;
+            yield { type: 'delta', text: part.text };
           }
         }
+
+        if (candidate?.finishReason) finishReason = candidate.finishReason;
+        if (event.promptFeedback?.blockReason) blockReason = event.promptFeedback.blockReason;
         if (event.usageMetadata) usage = event.usageMetadata;
+      }
+
+      // A silent empty answer is the worst outcome: it looks like the app is
+      // broken. Say what actually happened.
+      if (!produced) {
+        throw new Error(geminiEmptyAnswerReason({ finishReason, blockReason, usage, model: effectiveModel }));
       }
 
       yield {
         type: 'done',
+        model: effectiveModel,
         usage: usage
           ? {
               input: usage.promptTokenCount ?? null,
               output: usage.candidatesTokenCount ?? null,
+              thinking: usage.thoughtsTokenCount ?? null,
             }
           : null,
       };
@@ -336,15 +434,24 @@ const PROVIDERS = {
       await assertOk(res, 'Ollama');
 
       let usage = null;
+      let produced = false;
+
       for await (const event of readNdjson(res)) {
         const text = event.message?.content;
-        if (text) yield { type: 'delta', text };
+        if (text) {
+          produced = true;
+          yield { type: 'delta', text };
+        }
         if (event.done) {
           usage = {
             input: event.prompt_eval_count ?? null,
             output: event.eval_count ?? null,
           };
         }
+      }
+
+      if (!produced) {
+        throw new Error(`«${model}» no devolvió ninguna respuesta. ¿Está descargado el modelo?`);
       }
 
       yield { type: 'done', usage };

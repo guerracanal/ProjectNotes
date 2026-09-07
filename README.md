@@ -65,6 +65,12 @@ Puedes configurar varios y cambiar de modelo desde el propio chat. Sin ninguno
 la app funciona igual; solo el chat queda desactivado, y la búsqueda sigue
 operativa porque el índice léxico no usa la red.
 
+Para ver qué modelos responden de verdad con tus claves:
+
+```bash
+npm run doctor
+```
+
 ### Activar transcripción y resumen de reuniones
 
 Necesitas `ffmpeg` en el `PATH` y un entorno de Python:
@@ -192,7 +198,8 @@ npm run build   # build de producción
 npm run start   # servir el build (necesario para probar el service worker)
 npm run lint    # linter
 npm run icons   # regenerar los iconos de la PWA
-npm run test    # pruebas de la lógica de transcripción
+npm run test    # pruebas (transcripción, adaptadores de chat, prompt)
+npm run doctor  # comprueba qué proveedores y modelos de chat funcionan
 ```
 
 ---

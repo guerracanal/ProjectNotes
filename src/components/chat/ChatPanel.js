@@ -187,6 +187,11 @@ export default function ChatPanel({ isOpen, onClose }) {
 
             if (event === 'sources') {
               patchLast({ sources: payload.sources, semantic: payload.semantic });
+            } else if (event === 'notice') {
+              patchLast((last) => ({
+                ...last,
+                notices: [...(last.notices || []), payload.message],
+              }));
             } else if (event === 'delta') {
               patchLast((last) => ({ ...last, content: last.content + payload.text, pending: false }));
             } else if (event === 'error') {
@@ -331,6 +336,12 @@ export default function ChatPanel({ isOpen, onClose }) {
               <div className="bubble">
                 {message.role === 'assistant' ? (
                   <>
+                    {message.notices?.map((notice) => (
+                      <p key={notice} className="bubble-notice">
+                        <Icon name="info" size={13} />
+                        <span>{notice}</span>
+                      </p>
+                    ))}
                     {message.pending && !message.content ? (
                       <span className="thinking">
                         <span /><span /><span />
@@ -610,6 +621,25 @@ export default function ChatPanel({ isOpen, onClose }) {
           max-width: 100%;
           flex: 1;
           min-width: 0;
+        }
+
+        .bubble-notice {
+          display: flex;
+          align-items: flex-start;
+          gap: var(--sp-2);
+          margin-bottom: var(--sp-2);
+          padding: var(--sp-2);
+          border-radius: var(--r-sm);
+          background: var(--warning-soft);
+          color: var(--text-muted);
+          font-size: var(--fs-2xs);
+          line-height: 1.5;
+        }
+
+        .bubble-notice :global(svg) {
+          color: var(--warning);
+          flex-shrink: 0;
+          margin-top: 1px;
         }
 
         .thinking {

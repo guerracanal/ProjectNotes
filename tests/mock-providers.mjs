@@ -66,8 +66,56 @@ export function startMock(port) {
           { name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', supportedGenerationMethods: ['generateContent'] },
           { name: 'models/text-embedding-004', displayName: 'Embeddings', supportedGenerationMethods: ['embedContent'] },
           { name: 'models/gemini-pro-vision', displayName: 'Vision', supportedGenerationMethods: ['generateContent'] },
+          {
+            name: 'models/gemini-1.0-pro-legacy',
+            displayName: 'Legacy Pro',
+            description: 'Deprecated: use a newer model instead.',
+            supportedGenerationMethods: ['generateContent'],
+          },
         ],
       }));
+      return;
+    }
+
+    // Retired model: Google answers 404 and names its replacement in prose.
+    if (url.pathname.includes('gemini-retired:streamGenerateContent')) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: {
+          code: 404,
+          message:
+            'This model models/gemini-retired is no longer available to new users. ' +
+            'Please update your code to use models/gemini-replacement for the latest features and improvements.',
+          status: 'NOT_FOUND',
+        },
+      }));
+      return;
+    }
+
+    // The replacement answers normally.
+    if (url.pathname.includes('gemini-replacement:streamGenerateContent')) {
+      sse(res, [
+        { candidates: [{ content: { parts: [{ text: 'Respuesta del sustituto.' }] } }] },
+      ]);
+      return;
+    }
+
+    // A thinking model that spent the whole output budget reasoning: HTTP 200,
+    // no text at all, and finishReason MAX_TOKENS. This is the "no error but
+    // no answer" case.
+    if (url.pathname.includes('gemini-thinker:streamGenerateContent')) {
+      sse(res, [
+        {
+          candidates: [{ content: { parts: [{ thought: true, text: 'razonando…' }] }, finishReason: 'MAX_TOKENS' }],
+          usageMetadata: { promptTokenCount: 1200, candidatesTokenCount: 0, thoughtsTokenCount: 4000 },
+        },
+      ]);
+      return;
+    }
+
+    // Prompt refused by the safety filters: 200, no candidates at all.
+    if (url.pathname.includes('gemini-blocked:streamGenerateContent')) {
+      sse(res, [{ promptFeedback: { blockReason: 'SAFETY' } }]);
       return;
     }
     if (url.pathname.includes(':streamGenerateContent')) {

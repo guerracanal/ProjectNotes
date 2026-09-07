@@ -144,6 +144,11 @@ export async function POST(request) {
                 for await (const event of iterator) {
                     if (event.type === 'delta') {
                         send('delta', { text: event.text });
+                    } else if (event.type === 'notice') {
+                        // Something the user should know about the request, but
+                        // that did not stop it — e.g. a retired model swapped
+                        // for the replacement the provider named.
+                        send('notice', { message: event.text });
                     } else if (event.type === 'done') {
                         if (event.stopReason === 'refusal') {
                             send('error', {

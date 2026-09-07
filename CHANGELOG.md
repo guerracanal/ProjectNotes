@@ -7,6 +7,41 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.1.1] — 2026-09-07
+
+Arreglos de los fallos que aparecieron al probar el chat con claves reales de
+Gemini.
+
+### Corregido
+
+- **Modelos retirados que siguen en el catálogo.** `ListModels` de Gemini
+  devuelve modelos que la API rechaza después con un 404 para cuentas nuevas
+  («This model … is no longer available to new users»), indicando el sustituto
+  en el texto del error. Ahora se lee ese sustituto, se reintenta una vez con él
+  y se avisa en el chat del cambio. Los que el catálogo marca como obsoletos en
+  su descripción se ocultan del selector.
+- **Respuestas vacías sin error.** Gemini 2.5 y posteriores razonan antes de
+  responder, y esos tokens salen del mismo `maxOutputTokens` que la respuesta:
+  con el presupuesto anterior el modelo podía gastárselo entero pensando y
+  devolver un 200 sin una palabra. Se pide un presupuesto holgado (mínimo 8192)
+  y, si aun así no llega texto, se explica por qué —`MAX_TOKENS`, bloqueo de
+  seguridad u otro `finishReason`— en lugar de quedarse callado.
+- Los fragmentos de razonamiento (`thought: true`) ya no pueden colarse como si
+  fueran la respuesta.
+- El mismo silencio se detecta ahora en todos los proveedores: si el stream
+  termina sin texto, se informa en vez de dejar la burbuja vacía.
+
+### Añadido
+
+- `npm run doctor`: prueba contra las APIs reales qué proveedores y modelos
+  funcionan, cuánto tardan y qué devuelven, y sugiere las líneas de
+  `.env.local` para fijar uno. Prueba siempre el modelo configurado, aunque ya
+  no aparezca en el catálogo, que es justo el caso del modelo retirado.
+- Los tres fallos anteriores están reproducidos en `tests/mock-providers.mjs` y
+  cubiertos por `npm run test`.
+
+---
+
 ## [1.1.0] — 2026-09-07
 
 Transcripciones navegables con marcas de tiempo, y un asistente que ya no está

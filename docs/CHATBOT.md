@@ -264,6 +264,50 @@ Verificar una afirmación pasa así de leer una transcripción entera a un clic.
 
 ---
 
+## Comprobar qué modelos funcionan
+
+```bash
+npm run doctor              # todos los proveedores configurados
+npm run doctor -- gemini    # solo uno
+npm run doctor -- gemini --all   # todo su catálogo, no una muestra
+```
+
+Para cada proveedor lista su catálogo, manda una pregunta mínima a una muestra
+de modelos y dice cuáles responden, con cuánto tardan y qué devuelven. Al final
+sugiere las líneas de `.env.local` para fijar uno como predeterminado.
+
+Es la forma rápida de saber qué sirve de verdad sin ir probando modelos uno a
+uno desde la interfaz. Las claves se leen de `.env.local` y nunca se imprimen.
+
+---
+
+## Peculiaridades de Gemini
+
+Dos comportamientos suyos causaban fallos poco evidentes, y ambos están
+contemplados en el adaptador:
+
+**Modelos retirados que siguen en el catálogo.** `ListModels` devuelve modelos
+que la API luego rechaza con un 404 para cuentas nuevas, indicando el sustituto
+en el texto del error. El adaptador lo lee, reintenta una vez con el modelo que
+Google nombra, y avisa en el chat de que ha cambiado. Los que el catálogo marca
+como obsoletos en su descripción se ocultan directamente del selector.
+
+**Respuestas vacías sin error.** Gemini 2.5 y posteriores razonan antes de
+responder, y esos tokens de razonamiento salen del mismo `maxOutputTokens` que
+la respuesta. Con un presupuesto ajustado el modelo puede gastárselo entero
+pensando y devolver un 200 sin una sola palabra: parecía que la app estaba rota.
+El adaptador pide ahora un presupuesto holgado (mínimo 8192) y, si aun así no
+llega texto, dice por qué en lugar de quedarse callado — sea por
+`MAX_TOKENS`, por un bloqueo de seguridad o por cualquier otro `finishReason`.
+
+Los fragmentos de razonamiento (`thought: true`) nunca se muestran como si
+fueran la respuesta.
+
+Un silencio sin explicación es el peor resultado posible, así que el resto de
+proveedores hacen lo mismo: si el stream termina sin texto, se informa.
+
+---
+
 ## Si algo no funciona
 
 **«No hay ningún proveedor configurado»** — el chat está desactivado, pero la
@@ -273,6 +317,17 @@ Groq tienen plan gratuito.
 **Ollama aparece pero no se puede elegir** — el selector dirá si no consigue
 contactar con él. Comprueba que está en marcha y que has descargado algún modelo
 (`ollama pull llama3.2`).
+
+**«Ya no está disponible para cuentas nuevas»** — es un modelo retirado que sigue
+apareciendo en el catálogo de Gemini. El adaptador reintenta solo con el
+sustituto y te avisa; si quieres dejar de verlo, elige otro en el selector.
+
+**Un modelo responde vacío** — pasa con modelos que razonan mucho y presupuestos
+de salida cortos. La app te lo dirá explícitamente. Prueba con un modelo
+«flash», o baja el número de fragmentos recuperados en los ajustes del
+asistente.
+
+**No sé qué modelos me sirven** — `npm run doctor` los prueba todos y te lo dice.
 
 **El asistente no ve un fichero nuevo** — reconstruye el índice desde el botón de
 la barra lateral, o `POST /api/knowledge`. La huella debería detectarlo sola;

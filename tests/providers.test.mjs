@@ -84,6 +84,67 @@ console.log('\nGemini');
   check('sends the system instruction', call.body.systemInstruction.parts[0].text === system);
   check('maps assistant → model role',
     call.body.contents[1].role === 'model', JSON.stringify(call.body.contents.map((c) => c.role)));
+  check('leaves room for thinking on top of the answer',
+    call.body.generationConfig.maxOutputTokens >= 8192,
+    String(call.body.generationConfig.maxOutputTokens));
+}
+
+// --------------------------------------------- Gemini: the reported failures
+console.log('\nGemini — fallos que reportó el usuario');
+{
+  const gemini = getProvider('gemini');
+
+  // 1. The catalogue lists models that 404 for new accounts, naming the
+  //    replacement in the error prose.
+  const events = [];
+  let text = '';
+  for await (const event of gemini.stream({
+    system, messages, model: 'gemini-retired', apiKey: 'gk', baseUrl: ROOT, maxTokens: 100,
+  })) {
+    events.push(event);
+    if (event.type === 'delta') text += event.text;
+  }
+
+  const notice = events.find((e) => e.type === 'notice');
+  check('a retired model does not just fail', text === 'Respuesta del sustituto.', JSON.stringify(text));
+  check('it retries with the replacement Google names',
+    notice?.text.includes('gemini-replacement'), notice?.text);
+  check('it says which model actually answered',
+    events.find((e) => e.type === 'done')?.model === 'gemini-replacement');
+
+  // 2. A thinking model that spends the whole budget reasoning returns 200
+  //    with no text. Silence looks like a broken app; it must say why.
+  let thinkerError = '';
+  try {
+    for await (const _ of gemini.stream({
+      system, messages, model: 'gemini-thinker', apiKey: 'gk', baseUrl: ROOT, maxTokens: 100,
+    })) { /* drain */ }
+  } catch (e) {
+    thinkerError = e.message;
+  }
+  check('an empty answer explains itself instead of staying silent',
+    /razonando|presupuesto/.test(thinkerError), thinkerError);
+  check('and reports the thinking tokens that ate the budget',
+    thinkerError.includes('4000'), thinkerError);
+
+  // 3. Reasoning must never be presented as the answer.
+  check('thinking parts are not shown as the answer', !thinkerError.includes('razonando…'));
+
+  // 4. A safety block also returns 200 with nothing.
+  let blockedError = '';
+  try {
+    for await (const _ of gemini.stream({
+      system, messages, model: 'gemini-blocked', apiKey: 'gk', baseUrl: ROOT, maxTokens: 100,
+    })) { /* drain */ }
+  } catch (e) {
+    blockedError = e.message;
+  }
+  check('a blocked prompt says so', /bloqueó|SAFETY/.test(blockedError), blockedError);
+
+  // 5. Deprecated entries should not reach the picker at all.
+  const models = await gemini.listModels({ apiKey: 'gk', baseUrl: ROOT });
+  check('the picker hides models flagged deprecated',
+    !models.some((m) => m.id.includes('legacy')), JSON.stringify(models.map((m) => m.id)));
 }
 
 // ---------------------------------------------------------------- Ollama

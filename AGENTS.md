@@ -199,6 +199,21 @@ diferencia que `/api/chat` tiene que conocer.
 Los catálogos de modelos se consultan en vivo, nunca se escriben en el código:
 cambian a menudo y una lista fija acaba ofreciendo modelos retirados.
 
+Dos trampas de Gemini que ya están contempladas, y que conviene no deshacer:
+
+- Su catálogo **incluye modelos que la API luego rechaza** con un 404 para
+  cuentas nuevas, nombrando el sustituto en el texto del error. El adaptador lo
+  parsea, reintenta una vez y emite un evento `notice`.
+- Sus modelos 2.5+ **razonan con cargo a `maxOutputTokens`**. Con un presupuesto
+  ajustado devuelven un 200 sin texto. Por eso se pide un mínimo de 8192 y se
+  comprueba que haya salido algo antes de dar el turno por bueno.
+
+Un stream que termina sin texto lanza un error explicativo en **todos** los
+proveedores. Una burbuja vacía parece una app rota; un mensaje no.
+
+`npm run doctor` prueba los proveedores contra sus APIs reales, que es lo único
+que los simuladores de `tests/` no pueden cubrir.
+
 Decisiones y por qué:
 
 - **BM25 es el motor por defecto**, no un plan B. Funciona sin clave, sin red y
