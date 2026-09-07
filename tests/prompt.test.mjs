@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 
 const dir = mkdtempSync(join(tmpdir(), 'prompt-'));
@@ -12,7 +12,7 @@ let prompt = readFileSync(`${root}knowledge/prompt.js`, 'utf8')
   .replace("from '@/lib/transcript'", "from './transcript.mjs'");
 writeFileSync(join(dir, 'prompt.mjs'), prompt);
 
-const { ASSISTANT_INSTRUCTIONS, buildContextBlock } = await import(join(dir, 'prompt.mjs'));
+const { ASSISTANT_INSTRUCTIONS, buildContextBlock } = await import(pathToFileURL(join(dir, 'prompt.mjs')).href);
 
 const failures = [];
 const check = (l, ok, d = '') => {

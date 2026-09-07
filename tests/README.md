@@ -19,8 +19,26 @@ Los adaptadores se prueban contra los simuladores y no contra las APIs reales:
 no hacen falta claves, no hay coste, y lo que puede romperse de verdad —el
 parseo del stream y la forma de la petición— queda cubierto igual.
 
+## Windows
+
+Los tests y `npm run doctor` cargan módulos del proyecto copiándolos a una
+carpeta temporal y haciendo `import()` sobre ellos. Ese `import()` necesita una
+**URL `file://`**: si se le pasa una ruta de Windows tal cual, Node lee `C:` como
+si fuera un protocolo y falla con `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
+
+Por eso siempre se envuelve con `pathToFileURL(...).href`. Si añades otro
+`import()` dinámico construido a partir de una ruta, haz lo mismo.
+
 ## Lo que no está cubierto
 
 La interfaz. Durante el desarrollo se comprueba con Playwright (lector de
 transcripciones, selector de modelo, paleta de búsqueda), pero esos scripts
 necesitan un servidor en marcha y un navegador, así que no se ejecutan aquí.
+
+Windows. El código está escrito para funcionar en él —rutas con `path.join`,
+URLs `file://` en los `import()` dinámicos, separadores comprobados con
+`path.sep`— pero la suite solo se ejecuta en Linux, así que los fallos
+específicos de Windows aparecen al usarlo, no al probarlo.
+
+El comportamiento real de cada modelo de cada proveedor. Los simuladores cubren
+el protocolo; para saber qué modelos responden de verdad está `npm run doctor`.

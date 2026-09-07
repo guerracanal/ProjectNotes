@@ -9,12 +9,15 @@ await startMock(PORT);
 const { readFileSync, writeFileSync, mkdtempSync } = await import('node:fs');
 const { tmpdir } = await import('node:os');
 const { join } = await import('node:path');
+const { pathToFileURL } = await import('node:url');
 
 const dir = mkdtempSync(join(tmpdir(), 'prov-'));
 let src = readFileSync(new URL('../src/lib/knowledge/providers.js', import.meta.url), 'utf8');
 src = src.replace("import Anthropic from '@anthropic-ai/sdk';", 'const Anthropic = class {};');
 writeFileSync(join(dir, 'providers.mjs'), src);
-const { getProvider } = await import(join(dir, 'providers.mjs'));
+// import() dinámico necesita una URL file://: en Windows una ruta como C:\...
+// se interpreta como el protocolo "c:" y falla.
+const { getProvider } = await import(pathToFileURL(join(dir, 'providers.mjs')).href);
 
 const failures = [];
 const check = (label, ok, detail = '') => {

@@ -7,6 +7,23 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.1.2] — 2026-09-07
+
+### Corregido
+
+- **`npm run doctor` y los tests no arrancaban en Windows.** Cargan módulos del
+  proyecto copiándolos a una carpeta temporal y haciendo `import()` sobre ellos,
+  y a ese `import()` se le pasaba la ruta tal cual: en Windows Node lee `C:`
+  como si fuera un protocolo y aborta con `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
+  Ahora se envuelven con `pathToFileURL(...).href`.
+- El diagnóstico ya no muere si el SDK de Anthropic no se puede resolver: se
+  sustituye por un stub, porque quien use Gemini, Groq u Ollama no lo necesita.
+- Rutas con espacios (habituales en Windows) al resolver ese SDK.
+- Los colores ANSI se desactivan si la salida no es un terminal o si está
+  definida `NO_COLOR`.
+
+---
+
 ## [1.1.1] — 2026-09-07
 
 Arreglos de los fallos que aparecieron al probar el chat con claves reales de

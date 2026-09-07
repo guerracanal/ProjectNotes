@@ -16,7 +16,7 @@
 import { readFileSync, writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -36,17 +36,30 @@ for (const file of ['.env.local', '.env']) {
 
 // --- carga del registro de proveedores sin pasar por Next ------------------
 
-// El registro usa el alias `@/` de Next y vive fuera de node_modules una vez
-// copiado, así que se reescribe el import del SDK a su ruta ya resuelta.
+// El registro vive fuera de node_modules una vez copiado, así que hay que
+// reescribir el import del SDK a su ruta ya resuelta. Si no se puede resolver
+// (dependencias sin instalar), se sustituye por un stub: quien use Gemini,
+// Groq u Ollama no lo necesita, y el diagnóstico debe seguir siendo útil.
 const dir = mkdtempSync(join(tmpdir(), 'doctor-'));
-const anthropicUrl = await import.meta.resolve('@anthropic-ai/sdk');
+
+let anthropicImport = 'const Anthropic = class {};';
+try {
+  // JSON.stringify y no comillas simples: una ruta puede llevar caracteres
+  // que rompan el literal (en Windows es fácil que tenga espacios).
+  anthropicImport = `import Anthropic from ${JSON.stringify(await import.meta.resolve('@anthropic-ai/sdk'))};`;
+} catch {
+  /* sin SDK: Anthropic quedará como no disponible, el resto funciona */
+}
+
 const source = readFileSync(join(ROOT, 'src/lib/knowledge/providers.js'), 'utf8').replace(
-  "from '@anthropic-ai/sdk'",
-  `from '${anthropicUrl}'`
+  "import Anthropic from '@anthropic-ai/sdk';",
+  anthropicImport
 );
 writeFileSync(join(dir, 'providers.mjs'), source);
+// import() dinámico necesita una URL file://: en Windows una ruta como
+// C:\... se interpreta como el protocolo "c:" y falla.
 const { PROVIDER_IDS, getProvider, isConfigured, providerConfig } = await import(
-  join(dir, 'providers.mjs')
+  pathToFileURL(join(dir, 'providers.mjs')).href
 );
 
 // --- utilidades ------------------------------------------------------------
@@ -55,11 +68,12 @@ const args = process.argv.slice(2);
 const testAll = args.includes('--all');
 const only = args.filter((a) => !a.startsWith('--'));
 
-const GREEN = '\x1b[32m';
-const RED = '\x1b[31m';
-const YELLOW = '\x1b[33m';
-const DIM = '\x1b[2m';
-const RESET = '\x1b[0m';
+const color = process.stdout.isTTY && !process.env.NO_COLOR;
+const GREEN = color ? '\x1b[32m' : '';
+const RED = color ? '\x1b[31m' : '';
+const YELLOW = color ? '\x1b[33m' : '';
+const DIM = color ? '\x1b[2m' : '';
+const RESET = color ? '\x1b[0m' : '';
 
 const PROMPT = 'Responde únicamente con la palabra: listo';
 const TIMEOUT_MS = 45_000;
