@@ -10,6 +10,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Salida de `npm run build:standalone`: código generado, no fuente.
+    "standalone/**",
   ]),
 ]);
 

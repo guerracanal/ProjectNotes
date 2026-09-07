@@ -3,8 +3,9 @@ import { NextResponse } from 'next/server';
 import { getSafePath, statFile } from '@/lib/fs-utils';
 import { createJob, getJob, updateJob } from '@/lib/job-store';
 import { runPythonScript } from '@/lib/run-script';
+import { SCRIPTS_DIR } from '@/lib/paths';
 
-const SCRIPT = path.join(process.cwd(), 'scripts', 'transcribir_video.py');
+const SCRIPT = path.join(SCRIPTS_DIR, 'transcribir_video.py');
 
 export async function POST(request) {
     try {

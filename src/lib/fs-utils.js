@@ -1,8 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { PROJECTS_DIR } from '@/lib/paths';
 
 /** Root of the user's content. Everything the app reads or writes lives here. */
-export const PROJECTS_DIR = path.join(process.cwd(), 'projects_data');
+export { PROJECTS_DIR };
 
 /** Files/folders never exposed through the API or the indexer. */
 const IGNORED = new Set(['.git', 'node_modules', '.projectnotes', '.DS_Store', 'Thumbs.db']);

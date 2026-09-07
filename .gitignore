@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...salvo la plantilla, que no lleva claves y a la que apuntan README y docs.
+!.env.example
 
 # vercel
 .vercel
@@ -42,3 +44,7 @@ next-env.d.ts
 
 # ProjectNotes
 /.projectnotes/
+
+# Paquete standalone: salida de build (`npm run build:standalone`).
+# Lleva node_modules dentro, así que se genera, no se versiona.
+/standalone/

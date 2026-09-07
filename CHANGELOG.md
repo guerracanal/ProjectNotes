@@ -7,6 +7,48 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.3.0] — 2026-09-07
+
+### Añadido
+
+- **Versión standalone.** `npm run build:standalone` deja en `standalone/` una
+  copia autocontenida de la app que arranca con `node server.js`: sin
+  `npm install`, sin Next instalado y sin proceso de build en la máquina donde
+  corre. Unos 18 MB y solo pide Node 20 o superior. Guía completa en
+  [`docs/STANDALONE.md`](docs/STANDALONE.md).
+  - Sirve para dejar la app corriendo en un mini PC o un NAS, arrancarla al
+    encender el equipo, o exponerla en la red local para instalar la PWA desde
+    el móvil.
+  - El `server.js` que genera Next no lee ficheros `.env` ni sabe dónde está
+    `projects_data`, así que el paquete lleva un envoltorio que resuelve ambas
+    cosas y luego le cede el control. Al arrancar imprime qué ha decidido.
+  - Mientras el paquete viva dentro del repo, comparte datos, claves e índice
+    con `npm run dev` en vez de duplicarlos: busca `projects_data`, `.env.local`
+    y el `venv` primero en su propia carpeta y después en la de arriba. Copiado
+    a otra máquina, todo se resuelve dentro de la carpeta.
+  - El paquete no se versiona (lleva `node_modules` dentro): se genera.
+
+### Cambiado
+
+- **Las rutas en disco dejan de depender del directorio de trabajo.** Todo sale
+  ahora de `src/lib/paths.js`, y `PROJECTS_DIR`, `PROJECTNOTES_INDEX_DIR`,
+  `PROJECTNOTES_SCRIPTS_DIR` y `PROJECTNOTES_HOME` permiten fijar cada una por
+  entorno. Sin variables el comportamiento es el de siempre. Sin esta capa el
+  paquete standalone arranca sin ver un solo proyecto —y sin dar ningún error.
+- La build excluye `typescript` y `sharp` del rastreo de dependencias: el
+  primero solo hace falta al compilar y el segundo es el optimizador de
+  `next/image`, que esta app no usa. Son 53 MB de 76.
+
+### Corregido
+
+- **`.env.example` no estaba en el repositorio.** El patrón `.env*` del
+  `.gitignore` lo tapaba, así que la plantilla a la que apuntan el README y
+  media documentación («copia `.env.example` a `.env.local`») no llegaba a
+  nadie que clonase el proyecto. Ahora hay una excepción explícita; el fichero
+  no lleva ninguna clave.
+
+---
+
 ## [1.2.0] — 2026-09-07
 
 ### Añadido

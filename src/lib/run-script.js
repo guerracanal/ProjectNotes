@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { APP_ROOT } from '@/lib/paths';
 
 /**
  * Locate the Python interpreter to run the helper scripts with.
@@ -10,9 +11,10 @@ export function resolvePython() {
   if (process.env.PYTHON_BIN) return process.env.PYTHON_BIN;
 
   const candidates = [
-    path.join(process.cwd(), 'venv', 'bin', 'python3'),
-    path.join(process.cwd(), 'venv', 'Scripts', 'python.exe'),
-    path.join(process.cwd(), '.venv', 'bin', 'python3'),
+    path.join(APP_ROOT, 'venv', 'bin', 'python3'),
+    path.join(APP_ROOT, 'venv', 'Scripts', 'python.exe'),
+    path.join(APP_ROOT, '.venv', 'bin', 'python3'),
+    path.join(APP_ROOT, '.venv', 'Scripts', 'python.exe'),
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;

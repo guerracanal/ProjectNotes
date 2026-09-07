@@ -179,6 +179,26 @@ Activity con Bubblewrap, más un workflow de GitHub Actions ya preparado) en
 
 ---
 
+## Dejarlo corriendo
+
+`npm run dev` es para desarrollar. Cuando la app deja de ser algo que tocas y
+pasa a ser algo que usas, hay un paquete autocontenido:
+
+```bash
+npm run build:standalone
+cd standalone
+node server.js
+```
+
+Unos 18 MB, sin `npm install` y sin Next instalado: solo Node 20 o superior.
+Se puede copiar a un mini PC o a un NAS, o arrancarlo al encender el equipo.
+Mientras viva dentro del repo comparte datos, claves e índice con `npm run dev`.
+
+Detalles, variables de entorno y cómo arrancarlo como servicio:
+[`docs/STANDALONE.md`](docs/STANDALONE.md).
+
+---
+
 ## Documentación
 
 | Documento | Contenido |
@@ -190,6 +210,7 @@ Activity con Bubblewrap, más un workflow de GitHub Actions ya preparado) en
 | [`docs/CHATBOT.md`](docs/CHATBOT.md) | Proveedores, indexado, recuperación y prompt |
 | [`docs/REUNIONES.md`](docs/REUNIONES.md) | Transcribir, leer y resumir grabaciones |
 | [`docs/PWA-Y-APK.md`](docs/PWA-Y-APK.md) | Instalación, offline y empaquetado Android |
+| [`docs/STANDALONE.md`](docs/STANDALONE.md) | Paquete autocontenido para dejarlo corriendo |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Ideas de mejora priorizadas |
 
 ---
@@ -202,8 +223,11 @@ npm run build   # build de producción
 npm run start   # servir el build (necesario para probar el service worker)
 npm run lint    # linter
 npm run icons   # regenerar los iconos de la PWA
-npm run test    # pruebas (transcripción, adaptadores de chat, prompt)
+npm run test    # pruebas (rutas, transcripción, adaptadores de chat, prompt)
 npm run doctor  # comprueba qué proveedores y modelos de chat funcionan
+
+npm run build:standalone   # empaqueta standalone/ (~18 MB, autocontenido)
+npm run start:standalone   # arranca ese paquete
 ```
 
 ---

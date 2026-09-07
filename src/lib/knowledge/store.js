@@ -7,6 +7,7 @@ import {
   isTranscript,
   walkFiles,
 } from '@/lib/fs-utils';
+import { INDEX_DIR } from '@/lib/paths';
 import { chunkDocument } from './chunker';
 import { buildBm25Index, deserializeBm25, serializeBm25 } from './bm25';
 import { embedTexts, getEmbeddingConfig } from './embeddings';
@@ -21,7 +22,6 @@ import { embedTexts, getEmbeddingConfig } from './embeddings';
  * eagerly — the next query pays the cost, and only once.
  */
 
-const INDEX_DIR = path.join(process.cwd(), '.projectnotes');
 const INDEX_FILE = path.join(INDEX_DIR, 'knowledge-index.json');
 const INDEX_VERSION = 2;
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // skip anything implausibly large for notes

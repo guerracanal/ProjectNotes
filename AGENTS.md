@@ -60,6 +60,11 @@ scripts/
   transcribir_video.py    ← ffmpeg → Whisper → *_transcripcion.txt
   resumen_transcripcion.py← Gemini → *_transcripcion_resumen.txt
   generate-icons.mjs      ← Genera los PNG/ICO de la PWA sin dependencias nativas
+  build-standalone.mjs    ← Empaqueta standalone/ (ver docs/STANDALONE.md)
+  doctor.mjs              ← Qué proveedores y modelos de chat funcionan de verdad
+  lib/load-env.mjs        ← Lector de .env para los scripts que corren fuera de Next
+  templates/
+    standalone-server.js  ← Entry del paquete standalone. Se copia, no se ejecuta aquí
 src/
   app/
     layout.js             ← Proveedores, metadatos, script inline de tema
@@ -87,6 +92,7 @@ src/
     ui/                   ← Icon, Modal, ConfirmDialog, EmptyState, Skeleton
   contexts/               ← Theme, Toast, Settings, Sidebar
   lib/
+    paths.js              ← Dónde vive todo en disco. Ninguna otra usa process.cwd()
     fs-utils.js           ← ÚNICA puerta al disco. Todo pasa por getSafePath()
     knowledge/            ← Troceado, BM25, embeddings, recuperación, prompt
       providers.js        ← Un adaptador por proveedor de chat, misma interfaz
@@ -123,7 +129,21 @@ Los scripts de Python se lanzan con `execFile` a través de
 usuario y pueden contener comillas, `;` o `$(...)`; con `exec` eso es una shell
 injection. No vuelvas a introducir interpolación de cadenas en un comando.
 
-### 4.3 `styled-jsx` y componentes
+### 4.3 Rutas en disco
+
+Nada resuelve rutas contra `process.cwd()` salvo `src/lib/paths.js`. De ahí
+salen `APP_ROOT`, `PROJECTS_DIR`, `INDEX_DIR` y `SCRIPTS_DIR`, y cada una se
+puede fijar por entorno.
+
+No es capricho: el paquete standalone (`docs/STANDALONE.md`) corre desde su
+propia carpeta, así que con `process.cwd()` no vería ni los proyectos ni los
+scripts de Python. Y el fallo no da error — la app arranca y se comporta como
+si no hubiera ningún proyecto.
+
+Si necesitas una ruta absoluta a algo del proyecto, impórtala de `paths.js` o
+añádela allí. `tests/paths.test.mjs` cubre la resolución.
+
+### 4.4 `styled-jsx` y componentes
 
 `styled-jsx` añade su clase de ámbito solo a los elementos DOM escritos en ese
 JSX. Un `className` que pasas a un **componente** (`<Link>`, `<Icon>`) llega al
@@ -141,7 +161,7 @@ DOM **sin** esa clase, así que la regla no se aplica.
 
 Elige nombres de clase únicos cuando uses `:global()`: dejan de estar aislados.
 
-### 4.4 Efectos y estado
+### 4.5 Efectos y estado
 
 El proyecto usa el compilador de React con `react-hooks/set-state-in-effect`
 como **error**. No pongas `setState` síncrono en el cuerpo de un efecto. Patrones
@@ -154,7 +174,7 @@ que sí pasan y que ya se usan aquí:
 - Para cargar datos, IIFE `async` dentro del efecto, con los `setState` **después
   del `await`** y una bandera `cancelled` en la limpieza.
 
-### 4.5 Temas
+### 4.6 Temas
 
 Todo color sale de un token. Nunca escribas un hex en un componente. La paleta
 clara se define en `:root`; el modo oscuro se redefine dos veces (bajo
@@ -163,7 +183,7 @@ y bajo `:root[data-theme="dark"]`) para que la preferencia del sistema y la
 elección explícita ganen en ambos sentidos. Un script inline en `layout.js` pinta
 el tema guardado antes de la hidratación para evitar el flash blanco.
 
-### 4.6 Errores hacia el usuario
+### 4.7 Errores hacia el usuario
 
 Nada de `alert()`, `confirm()` ni `prompt()`. Usa `useToast()`, `<Modal>` y
 `<ConfirmDialog>`. Nada de `window.location.reload()`: usa `router.refresh()`.
@@ -329,6 +349,9 @@ de cometer aquí (por eso existe `lib/file-kinds.js` en paralelo a `fs-utils.js`
   página. En el lector de transcripciones eso metía el panel bajo la barra
   superior; por eso se mueve el `scrollTop` de la lista a mano cuando la lista es
   la que tiene el scroll.
+- **`output: 'standalone'` no copia los estáticos.** Ni `.next/static` ni
+  `public/`. Está documentado por Next y es el fallo clásico: la app carga sin
+  estilos y con los iconos rotos. `build-standalone.mjs` los copia a mano.
 - **Los eventos de `<video>`/`<audio>` no burbujean.** React los engancha
   directamente al elemento, pero un `Escape` en un menú dentro del panel del
   chat sí burbujea: si añades un popover ahí, corta la propagación o cerrarás

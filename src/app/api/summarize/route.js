@@ -3,8 +3,9 @@ import { NextResponse } from 'next/server';
 import { getSafePath, statFile } from '@/lib/fs-utils';
 import { createJob, getJob, updateJob } from '@/lib/job-store';
 import { runPythonScript } from '@/lib/run-script';
+import { SCRIPTS_DIR } from '@/lib/paths';
 
-const SCRIPT = path.join(process.cwd(), 'scripts', 'resumen_transcripcion.py');
+const SCRIPT = path.join(SCRIPTS_DIR, 'resumen_transcripcion.py');
 
 export async function POST(request) {
     try {

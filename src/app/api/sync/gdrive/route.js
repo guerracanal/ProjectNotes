@@ -8,8 +8,7 @@ import {
     uploadFileToDrive,
     createFolderInDrive
 } from '@/lib/gdrive';
-
-const PROJECTS_DIR = path.join(process.cwd(), 'projects_data');
+import { PROJECTS_DIR } from '@/lib/paths';
 
 /**
  * Recursively lists all files and folders in the local projects_data directory.
