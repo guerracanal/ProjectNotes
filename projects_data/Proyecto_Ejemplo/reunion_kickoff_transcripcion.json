@@ -1,0 +1,101 @@
+{
+ "version": 1,
+ "media": "reunion_kickoff.mp4",
+ "language": "es",
+ "model": "small",
+ "duration": 224.0,
+ "segmentCount": 13,
+ "segments": [
+  {
+   "id": 0,
+   "start": 0.0,
+   "end": 14.4,
+   "text": "Buenos días a todos. Vamos a arrancar el kickoff del rediseño del portal. El objetivo de hoy es cerrar el alcance de la primera fase y repartir responsables.",
+   "speaker": null
+  },
+  {
+   "id": 1,
+   "start": 14.4,
+   "end": 32.8,
+   "text": "Antes de nada, un recordatorio: este fichero es un ejemplo. Lo genera el script scripts/transcribir_video.py cuando transcribes una grabación, y acompaña al fichero de texto plano.",
+   "speaker": null
+  },
+  {
+   "id": 2,
+   "start": 32.8,
+   "end": 51.2,
+   "text": "Sobre el alcance. Estamos de acuerdo en que la primera fase cubre la home, el buscador y la ficha de producto. El área de cuenta se queda fuera y la retomamos en la segunda fase.",
+   "speaker": null
+  },
+  {
+   "id": 3,
+   "start": 51.2,
+   "end": 68.5,
+   "text": "Una duda sobre el buscador. ¿Incluimos filtros por facetas desde el principio o lo dejamos para después? Porque eso cambia bastante el trabajo de backend.",
+   "speaker": null
+  },
+  {
+   "id": 4,
+   "start": 68.5,
+   "end": 89.0,
+   "text": "Lo dejamos fuera de la primera fase. Preferimos salir antes con el buscador simple y medir cómo se usa. Si los datos lo justifican, priorizamos las facetas en el siguiente ciclo.",
+   "speaker": null
+  },
+  {
+   "id": 5,
+   "start": 89.0,
+   "end": 104.3,
+   "text": "De acuerdo entonces. Decisión tomada: buscador simple en fase uno, facetas condicionadas a los datos de uso.",
+   "speaker": null
+  },
+  {
+   "id": 6,
+   "start": 104.3,
+   "end": 126.7,
+   "text": "Pasamos a plazos. La propuesta es tener el diseño cerrado en tres semanas y el desarrollo terminado seis semanas después. Con eso llegamos a la ventana de lanzamiento de noviembre.",
+   "speaker": null
+  },
+  {
+   "id": 7,
+   "start": 126.7,
+   "end": 142.1,
+   "text": "Tres semanas para diseño me parece justo si contamos con la revisión de accesibilidad. Yo pediría una semana más de margen.",
+   "speaker": null
+  },
+  {
+   "id": 8,
+   "start": 142.1,
+   "end": 161.9,
+   "text": "Ampliamos a cuatro semanas el diseño y recortamos una del margen final. La fecha de lanzamiento no se mueve. Lo dejamos así salvo que alguien vea un problema.",
+   "speaker": null
+  },
+  {
+   "id": 9,
+   "start": 161.9,
+   "end": 178.4,
+   "text": "Por mi parte ninguno. Me encargo de preparar el plan de pruebas de accesibilidad y lo comparto antes del viernes.",
+   "speaker": null
+  },
+  {
+   "id": 10,
+   "start": 178.4,
+   "end": 196.0,
+   "text": "Perfecto. Recapitulo los próximos pasos: cerrar el diseño en cuatro semanas, plan de pruebas de accesibilidad para el viernes, y revisar los textos con el equipo legal antes de maquetar.",
+   "speaker": null
+  },
+  {
+   "id": 11,
+   "start": 196.0,
+   "end": 208.6,
+   "text": "Añado una última cosa. Necesitamos decidir el proveedor de analítica antes de empezar el desarrollo, porque condiciona el marcado de eventos.",
+   "speaker": null
+  },
+  {
+   "id": 12,
+   "start": 208.6,
+   "end": 224.0,
+   "text": "Buen punto. Lo dejamos como pendiente para la próxima reunión y lo traigo yo con dos opciones comparadas. Con esto cerramos. Gracias a todos.",
+   "speaker": null
+  }
+ ]
+}

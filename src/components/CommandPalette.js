@@ -85,14 +85,26 @@ export default function CommandPalette({ isOpen, onClose }) {
         subtitle: p.path,
         href: `/project/${p.path.split('/').map(encodeURIComponent).join('/')}`,
       })),
-      ...contentHits.map((hit) => ({
-        kind: 'content',
-        id: `c:${hit.path}`,
-        title: hit.title,
-        subtitle: hit.project,
-        excerpt: hit.matches?.[0]?.excerpt,
-        href: `/project/${hit.project.split('/').map(encodeURIComponent).join('/')}?tab=notes&file=${encodeURIComponent(hit.title)}`,
-      })),
+      ...contentHits.map((hit) => {
+        const project = hit.project.split('/').map(encodeURIComponent).join('/');
+        // A spoken hit opens the transcript reader at the right moment; a
+        // written one opens the file in the notes tab.
+        const href =
+          hit.media && hit.start !== null && hit.start !== undefined
+            ? `/project/${project}?tab=meetings&media=${encodeURIComponent(hit.media)}&t=${Math.floor(hit.start)}`
+            : `/project/${project}?tab=notes&file=${encodeURIComponent(hit.title)}`;
+
+        return {
+          kind: 'content',
+          id: `c:${hit.path}`,
+          title: hit.title,
+          subtitle: hit.project,
+          excerpt: hit.matches?.[0]?.excerpt,
+          time: hit.start,
+          icon: hit.media ? 'mic' : 'file-text',
+          href,
+        };
+      }),
     ],
     [projectMatches, contentHits]
   );
@@ -175,7 +187,7 @@ export default function CommandPalette({ isOpen, onClose }) {
                 onMouseEnter={() => setCursor(index)}
                 onClick={() => go(item)}
               >
-                <Icon name={item.kind === 'project' ? 'folder' : 'file-text'} size={16} />
+                <Icon name={item.kind === 'project' ? 'folder' : item.icon || 'file-text'} size={16} />
                 <span className="palette-text">
                   <span className="palette-title truncate">{item.title}</span>
                   <span className="palette-sub truncate">{item.subtitle}</span>

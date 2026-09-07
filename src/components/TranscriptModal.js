@@ -93,6 +93,10 @@ export default function TranscriptModal({ meeting, projectPath, mode = 'transcri
     [router]
   );
 
+  // Re-running over an existing transcript is how a recording gains
+  // timestamps, and the script refuses to overwrite unless told to.
+  const needsForce = Boolean(meeting.transcriptPath && !meeting.segmentsPath);
+
   const startTranscription = useCallback(async () => {
     setError(null);
     setTranscript({ status: 'pending', logs: 'Iniciando transcripción…\n' });
@@ -100,7 +104,7 @@ export default function TranscriptModal({ meeting, projectPath, mode = 'transcri
       const res = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPath: meeting.path }),
+        body: JSON.stringify({ videoPath: meeting.path, force: needsForce }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo iniciar la transcripción');
@@ -109,7 +113,7 @@ export default function TranscriptModal({ meeting, projectPath, mode = 'transcri
       setError(e.message);
       setTranscript({ status: 'error', logs: e.message });
     }
-  }, [meeting.path, poll]);
+  }, [meeting.path, needsForce, poll]);
 
   const startSummary = useCallback(async () => {
     setError(null);
@@ -147,7 +151,7 @@ export default function TranscriptModal({ meeting, projectPath, mode = 'transcri
     <Modal
       isOpen
       onClose={busy ? () => {} : onClose}
-      title={mode === 'summary' ? 'Generar resumen' : 'Transcribir reunión'}
+      title={mode === 'summary' ? 'Generar resumen' : needsForce ? 'Añadir marcas de tiempo' : 'Transcribir grabación'}
       icon={mode === 'summary' ? 'sparkles' : 'mic'}
       size="lg"
       closeOnOverlay={!busy}
@@ -176,21 +180,22 @@ export default function TranscriptModal({ meeting, projectPath, mode = 'transcri
           <StatusPill status={transcript.status} />
         </header>
 
-        {transcript.status === 'idle' && !meeting.transcriptPath && (
+        {transcript.status === 'idle' && (
           <>
             <p className="tm-hint">
-              Extrae el audio con ffmpeg y lo transcribe localmente con Whisper. En vídeos largos
-              puede tardar varios minutos.
+              {needsForce
+                ? 'Esta grabación ya tiene transcripción, pero se hizo sin marcas de tiempo. Al volver a transcribirla obtendrás una transcripción navegable y el asistente podrá citar el minuto exacto.'
+                : 'Extrae el audio con ffmpeg y lo transcribe localmente con Whisper, guardando las marcas de tiempo de cada fragmento. En grabaciones largas puede tardar varios minutos.'}
             </p>
-            <button className="btn btn-primary btn-sm" onClick={startTranscription}>
-              <Icon name="mic" size={14} />
-              Iniciar transcripción
-            </button>
+            {meeting.segmentsPath ? (
+              <p className="tm-hint">Ya tiene transcripción con marcas de tiempo.</p>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={startTranscription}>
+                <Icon name={needsForce ? 'clock' : 'mic'} size={14} />
+                {needsForce ? 'Añadir marcas de tiempo' : 'Iniciar transcripción'}
+              </button>
+            )}
           </>
-        )}
-
-        {transcript.status === 'idle' && meeting.transcriptPath && (
-          <p className="tm-hint">Esta reunión ya tiene transcripción.</p>
         )}
 
         {transcript.logs && <pre className="tm-logs">{transcript.logs}</pre>}

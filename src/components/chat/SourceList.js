@@ -3,39 +3,75 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Icon from '../ui/Icon';
+import { formatTime } from '@/lib/transcript';
+
+function encodePath(path) {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
+/**
+ * Where a citation should take the reader.
+ *
+ * A transcript hit knows which recording it came from and at what second, so
+ * it links straight into the transcript reader at that moment. Everything else
+ * opens the file in the notes tab.
+ */
+function hrefFor(source) {
+  const project = encodePath(source.project);
+
+  if (source.media && source.start !== null && source.start !== undefined) {
+    return `/project/${project}?tab=meetings&media=${encodeURIComponent(source.media)}&t=${Math.max(0, Math.floor(source.start))}`;
+  }
+
+  return `/project/${project}?tab=notes&file=${encodeURIComponent(source.title)}`;
+}
 
 /** Citation chips under an assistant answer, expandable to show the excerpt. */
 export default function SourceList({ sources }) {
   const [open, setOpen] = useState(false);
+  const spoken = sources.filter((s) => s.media && s.start !== null && s.start !== undefined);
 
   return (
     <div className="sources">
       <button className="sources-toggle" onClick={() => setOpen((v) => !v)}>
         <Icon name="quote" size={13} />
-        <span>{sources.length} fuente{sources.length === 1 ? '' : 's'}</span>
+        <span>
+          {sources.length} fuente{sources.length === 1 ? '' : 's'}
+          {spoken.length > 0 && ` · ${spoken.length} con minuto`}
+        </span>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} />
       </button>
 
       {open && (
         <ul className="sources-list">
-          {sources.map((source) => (
-            <li key={source.ref}>
-              <Link
-                href={`/project/${source.project.split('/').map(encodeURIComponent).join('/')}?tab=notes&file=${encodeURIComponent(source.title)}`}
-                className="source-item"
-              >
-                <span className="source-ref">{source.ref}</span>
-                <span className="source-text">
-                  <span className="source-title truncate">
-                    {source.title}
-                    {source.heading && <span className="source-heading"> › {source.heading}</span>}
+          {sources.map((source) => {
+            const hasTime = source.media && source.start !== null && source.start !== undefined;
+            return (
+              <li key={source.ref}>
+                <Link href={hrefFor(source)} className="source-item">
+                  <span className="source-ref">{source.ref}</span>
+                  <span className="source-text">
+                    <span className="source-title truncate">
+                      {hasTime ? source.media : source.title}
+                      {!hasTime && source.heading && (
+                        <span className="source-heading"> › {source.heading}</span>
+                      )}
+                    </span>
+                    <span className="source-line">
+                      <span className="source-project truncate">{source.project}</span>
+                      {hasTime && (
+                        <span className="source-time">
+                          <Icon name="clock" size={10} />
+                          {formatTime(source.start)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="source-excerpt">{source.excerpt}</span>
                   </span>
-                  <span className="source-project truncate">{source.project}</span>
-                  <span className="source-excerpt">{source.excerpt}</span>
-                </span>
-              </Link>
-            </li>
-          ))}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -110,9 +146,30 @@ export default function SourceList({ sources }) {
           color: var(--text-muted);
         }
 
+        .source-line {
+          display: flex;
+          align-items: center;
+          gap: var(--sp-2);
+          min-width: 0;
+        }
+
         .source-project {
           font-size: var(--fs-2xs);
           color: var(--text-subtle);
+        }
+
+        .source-time {
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          flex-shrink: 0;
+          padding: 0 5px;
+          border-radius: var(--r-full);
+          background: var(--accent-soft);
+          color: var(--accent);
+          font-family: var(--font-mono);
+          font-size: var(--fs-2xs);
+          font-weight: 600;
         }
 
         .source-excerpt {

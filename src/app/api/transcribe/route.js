@@ -8,7 +8,7 @@ const SCRIPT = path.join(process.cwd(), 'scripts', 'transcribir_video.py');
 
 export async function POST(request) {
     try {
-        const { videoPath } = await request.json();
+        const { videoPath, force = false } = await request.json();
 
         if (!videoPath) {
             return NextResponse.json({ error: 'Video path is required' }, { status: 400 });
@@ -29,11 +29,15 @@ export async function POST(request) {
 
         const jobId = createJob('transcribe', { videoPath });
 
+        // The script skips a recording that already has a transcript, so
+        // re-running it to add timestamps has to say so explicitly.
+        const args = force ? [fullVideoPath, '--force'] : [fullVideoPath];
+
         // Fire and forget: the client polls GET /api/transcribe?jobId=...
         (async () => {
             updateJob(jobId, { status: 'running' });
             try {
-                const { stdout, stderr } = await runPythonScript(SCRIPT, [fullVideoPath]);
+                const { stdout, stderr } = await runPythonScript(SCRIPT, args);
                 updateJob(jobId, {
                     status: 'completed',
                     endTime: new Date().toISOString(),

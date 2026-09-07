@@ -1,5 +1,10 @@
 import { notFound } from 'next/navigation';
-import { getDirectoryContent, getFileContent, VIDEO_EXTENSIONS } from '@/lib/fs-utils';
+import {
+    AUDIO_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    getDirectoryContent,
+    getFileContent,
+} from '@/lib/fs-utils';
 import ProjectView from '@/components/project/ProjectView';
 
 export async function generateMetadata({ params }) {
@@ -43,23 +48,31 @@ export default async function ProjectPage({ params }) {
         byName.has('links.md') ? readOptional(`${projectPath}/links.md`) : '',
     ]);
 
-    // A "meeting" is a video plus whatever transcript and summary sit beside it.
-    const videos = files.filter((f) =>
-        VIDEO_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext))
-    );
+    // A "meeting" is a recording plus whatever transcript and summary sit
+    // beside it. Audio counts too — a voice note is a meeting with one person.
+    const recordings = files.filter((f) => {
+        const lower = f.name.toLowerCase();
+        return [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS].some((ext) => lower.endsWith(ext));
+    });
 
     const meetings = await Promise.all(
-        videos.map(async (video) => {
-            const baseName = video.name.slice(0, video.name.lastIndexOf('.'));
+        recordings.map(async (media) => {
+            const baseName = media.name.slice(0, media.name.lastIndexOf('.'));
             const transcript = byName.get(`${baseName}_transcripcion.txt`);
+            const segments = byName.get(`${baseName}_transcripcion.json`);
             const summary = byName.get(`${baseName}_transcripcion_resumen.txt`);
+            const isAudio = AUDIO_EXTENSIONS.some((ext) => media.name.toLowerCase().endsWith(ext));
 
             return {
-                name: video.name,
+                name: media.name,
                 baseName,
-                path: video.path,
-                mtime: video.mtime,
+                path: media.path,
+                mtime: media.mtime,
+                kind: isAudio ? 'audio' : 'video',
                 transcriptPath: transcript ? transcript.path : null,
+                // Present only once the recording has been transcribed by a
+                // version of the script that emits timestamps.
+                segmentsPath: segments ? segments.path : null,
                 summaryContent: summary
                     ? await readOptional(`${projectPath}/${summary.name}`)
                     : '',

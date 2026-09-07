@@ -92,6 +92,9 @@ export async function POST(request) {
                     title: hit.title,
                     heading: hit.heading,
                     excerpt: hit.excerpt,
+                    // Transcript hits deep-link into the recording.
+                    start: hit.start ?? null,
+                    media: hit.media ?? null,
                 })),
                 semantic: retrieval.semanticUsed,
                 totalChunks: retrieval.totalChunks,

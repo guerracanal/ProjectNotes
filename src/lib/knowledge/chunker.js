@@ -1,4 +1,5 @@
 import { isTranscript } from '@/lib/fs-utils';
+import { formatTime, parseTranscript } from '@/lib/transcript';
 
 /**
  * Split a document into retrieval-sized chunks.
@@ -12,6 +13,12 @@ import { isTranscript } from '@/lib/fs-utils';
 const TARGET_CHARS = 1400;
 const OVERLAP_CHARS = 200;
 const MIN_CHARS = 120;
+
+// Transcripts get smaller chunks than prose. The point of indexing them by
+// segment is that a citation lands on the right moment, and a chunk spanning
+// two minutes of speech puts the reader back to guessing.
+const TRANSCRIPT_TARGET_CHARS = 650;
+const TRANSCRIPT_OVERLAP_CHARS = 120;
 
 function splitLongText(text, heading) {
   // Break on sentence boundaries, then greedily pack up to TARGET_CHARS.
@@ -40,10 +47,70 @@ function splitLongText(text, heading) {
   return chunks;
 }
 
+/**
+ * Chunk a timestamped transcript by grouping consecutive segments.
+ *
+ * Each chunk keeps the start of its first segment and the end of its last, so
+ * a citation can point at the exact moment in the recording rather than at the
+ * file as a whole. Returns null when the content is not a transcript document,
+ * which lets the caller fall back to the text path.
+ */
+export function chunkTranscript(content, { path: filePath = '' } = {}) {
+  const transcript = parseTranscript(content);
+  if (!transcript) return null;
+
+  const chunks = [];
+  let buffer = null;
+
+  const flush = () => {
+    if (!buffer) return;
+    chunks.push({
+      heading: `${formatTime(buffer.start)} – ${formatTime(buffer.end)}`,
+      text: buffer.text.trim(),
+      start: buffer.start,
+      end: buffer.end,
+      media: transcript.media,
+      source: filePath,
+    });
+    buffer = null;
+  };
+
+  for (const segment of transcript.segments) {
+    if (!buffer) {
+      buffer = { start: segment.start, end: segment.end, text: segment.text };
+      continue;
+    }
+
+    if (buffer.text.length + segment.text.length > TRANSCRIPT_TARGET_CHARS) {
+      const tail = buffer;
+      flush();
+      // Carry a tail of the previous chunk as overlap, so a point made across
+      // a chunk boundary stays retrievable from either side.
+      buffer = {
+        start: segment.start,
+        end: segment.end,
+        text: `${tail.text.slice(-TRANSCRIPT_OVERLAP_CHARS)} ${segment.text}`.trim(),
+      };
+    } else {
+      buffer.text = `${buffer.text} ${segment.text}`.trim();
+      buffer.end = segment.end;
+    }
+  }
+  flush();
+
+  return chunks.map((chunk, i) => ({ ...chunk, order: i }));
+}
+
 /** Turn raw file content into chunk objects. */
 export function chunkDocument(content, { name = '', path: filePath = '' } = {}) {
   const text = String(content || '').replace(/\r\n/g, '\n').trim();
   if (!text) return [];
+
+  // A transcript sidecar carries its own structure: segments with times.
+  if (/_transcripcion\.json$/i.test(name)) {
+    const transcriptChunks = chunkTranscript(text, { path: filePath });
+    if (transcriptChunks) return transcriptChunks;
+  }
 
   const isMarkdownLike = /\.(md|markdown)$/i.test(name) && !isTranscript(name);
 

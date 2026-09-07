@@ -101,10 +101,17 @@ export async function retrieve(query, { limit = 8, scope = null, semantic = true
       score,
       path: chunk.path,
       project: chunk.project,
-      title: chunk.title,
+      // A transcript sidecar is named after its recording plus a suffix; the
+      // recording is what the reader recognises, so show that instead.
+      title: chunk.media || chunk.title,
       heading: chunk.heading,
       text: chunk.text,
       excerpt: excerpt(chunk.text, query),
+      // Carried through for transcript chunks so a citation can deep-link to
+      // the exact second of the recording.
+      ...(chunk.start !== undefined
+        ? { start: chunk.start, end: chunk.end, media: chunk.media || null }
+        : {}),
     });
 
     if (hits.length >= limit) break;
@@ -128,11 +135,18 @@ export async function searchDocuments(query, { limit = 25, scope = null } = {}) 
         project: hit.project,
         title: hit.title,
         score: hit.score,
+        // For a transcript, the best-scoring moment doubles as the jump
+        // target when the reader opens the result.
+        media: hit.media ?? null,
+        start: hit.start ?? null,
         matches: [],
       });
     }
     const entry = byDocument.get(hit.path);
-    entry.score = Math.max(entry.score, hit.score);
+    if (hit.score > entry.score) {
+      entry.score = hit.score;
+      if (hit.start !== undefined) entry.start = hit.start;
+    }
     if (entry.matches.length < 3) {
       entry.matches.push({ heading: hit.heading, excerpt: hit.excerpt });
     }

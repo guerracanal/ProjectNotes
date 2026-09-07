@@ -55,9 +55,21 @@ function documentLabel(file) {
 }
 
 async function collectChunks() {
-  const files = (await walkFiles('')).filter(
+  const all = (await walkFiles('')).filter(
     (f) => f.kind === 'text' && f.size > 0 && f.size <= MAX_FILE_BYTES
   );
+
+  // A transcribed recording leaves two files with the same words in them:
+  // `_transcripcion.txt` and `_transcripcion.json`. Index only the JSON when
+  // it exists — same content, but with the timestamps that let a citation
+  // point at a moment instead of at a file.
+  const supersededText = new Set(
+    all
+      .filter((f) => /_transcripcion\.json$/i.test(f.name))
+      .map((f) => f.path.replace(/\.json$/i, '.txt'))
+  );
+
+  const files = all.filter((f) => !supersededText.has(f.path));
 
   files.sort((a, b) => a.path.localeCompare(b.path));
 
@@ -88,6 +100,11 @@ async function collectChunks() {
         heading: chunk.heading || '',
         order: chunk.order,
         text: chunk.text,
+        // Present only for transcript chunks: the moment in the recording
+        // this text was spoken, and which file to play.
+        ...(chunk.start !== undefined
+          ? { start: chunk.start, end: chunk.end, media: chunk.media || null }
+          : {}),
       });
     }
   }
