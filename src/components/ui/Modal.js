@@ -19,7 +19,23 @@ export default function Modal({
   closeOnOverlay = true,
 }) {
   const panelRef = useRef(null);
+  const bodyRef = useRef(null);
   const previouslyFocused = useRef(null);
+
+  /**
+   * `onClose` fuera de las dependencias del efecto.
+   *
+   * Quien usa el modal pasa casi siempre una flecha inline
+   * (`onClose={() => setShowCreate(false)}`), que cambia de identidad en cada
+   * render. Con `onClose` en las dependencias, cada tecla escrita en un campo
+   * del modal re-renderizaba al padre, el efecto se limpiaba y se volvía a
+   * ejecutar, y su última línea devolvía el foco al principio del diálogo. El
+   * síntoma era no poder escribir: cada carácter mandaba el foco a «Cerrar».
+   */
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -31,16 +47,22 @@ export default function Modal({
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
       }
     };
     document.addEventListener('keydown', onKeyDown);
 
-    // Move focus into the dialog so keyboard users land in the right place.
-    const focusable = panelRef.current?.querySelector(
+    // Llevar el foco al primer campo del cuerpo, no al primer elemento
+    // enfocable del diálogo: una lista de selectores CSS casa en orden de
+    // documento, y la cabecera —con el botón de cerrar— va antes que el
+    // cuerpo. Sin esto, abrir «Nueva nota» dejaba el cursor en «Cerrar».
+    const field = bodyRef.current?.querySelector(
+      'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+    );
+    const fallback = panelRef.current?.querySelector(
       'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])'
     );
-    focusable?.focus();
+    (field || fallback)?.focus();
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
@@ -49,7 +71,7 @@ export default function Modal({
         previouslyFocused.current.focus();
       }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen || typeof document === 'undefined') return null;
 
@@ -81,7 +103,9 @@ export default function Modal({
             </button>
           </div>
         )}
-        <div className="modal-body">{children}</div>
+        <div className="modal-body" ref={bodyRef}>
+          {children}
+        </div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
     </div>,

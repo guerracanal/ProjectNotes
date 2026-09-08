@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Icon from './ui/Icon';
 import EmptyState from './ui/EmptyState';
@@ -24,19 +24,48 @@ export default function TaskEditor({ projectPath, initialContent, onSaved }) {
   const toast = useToast();
 
   const [tasks, setTasks] = useState(() => parseTasks(initialContent));
-  const [originalContent, setOriginalContent] = useState(initialContent);
   const [newTaskText, setNewTaskText] = useState('');
   const [filter, setFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  // Re-seed when the server sends fresh content (e.g. after a Drive sync).
-  useEffect(() => {
-    setTasks(parseTasks(initialContent));
-    setOriginalContent(initialContent);
-    setDirty(false);
-  }, [initialContent]);
+  /**
+   * El fichero tal como está en disco ahora mismo.
+   *
+   * `serializeTasks` reconstruye tasks.md entero sobre esta base, así que tiene
+   * que seguir al día. Es estado y no una ref porque el render lo compara con
+   * lo que manda el servidor, y `persist` lo lee desde un manejador, donde el
+   * valor ya es el del último render.
+   */
+  const [onDisk, setOnDisk] = useState(initialContent);
+
+  /** Las escrituras van en fila: dos cambios seguidos no pueden cruzarse. */
+  const queue = useRef(Promise.resolve());
+  const inFlight = useRef(0);
+  const writeToken = useRef(0);
+
+  /**
+   * Re-sembrar cuando el servidor manda contenido nuevo (p. ej. tras sincronizar
+   * con Drive).
+   *
+   * Ajustar el estado durante el render, y no en un efecto, es lo que recomienda
+   * React para reaccionar a un cambio de prop: se corrige antes de pintar, sin
+   * el render de más que provoca un efecto.
+   *
+   * El eco de nuestra propia escritura se ignora: `router.refresh()` vuelve con
+   * el fichero que acabamos de guardar, y re-sembrar ahí pisaría un cambio hecho
+   * mientras la petición viajaba.
+   */
+  const [seenContent, setSeenContent] = useState(initialContent);
+  if (seenContent !== initialContent) {
+    setSeenContent(initialContent);
+    if (initialContent !== onDisk) {
+      setOnDisk(initialContent);
+      setTasks(parseTasks(initialContent));
+      setDirty(false);
+    }
+  }
 
   // Guard against losing edits to a stray tab close.
   useEffect(() => {
@@ -49,9 +78,70 @@ export default function TaskEditor({ projectPath, initialContent, onSaved }) {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  /**
+   * Escribe la lista en disco.
+   *
+   * Cada cambio se guarda solo: añadir una tarea, marcarla o borrarla no deja
+   * nada pendiente de un botón. `dirty` pasa a significar lo único que puede
+   * dejar trabajo sin guardar —que una escritura haya fallado—, y entonces el
+   * botón sirve de reintento.
+   */
+  const persist = (next, { announce = false } = {}) => {
+    // La base es el fichero en disco, no el estado anterior: `serializeTasks`
+    // reconstruye el markdown entero sobre ella.
+    const content = serializeTasks(next, onDisk);
+    const token = (writeToken.current += 1);
+
+    inFlight.current += 1;
+    setSaving(true);
+
+    queue.current = queue.current
+      .then(async () => {
+        const res = await fetch(
+          `/api/projects/${projectPath.split('/').map(encodeURIComponent).join('/')}/tasks.md`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          }
+        );
+        if (!res.ok) throw new Error((await res.json()).error || `Error ${res.status}`);
+
+        // Solo la última escritura pedida actualiza el estado. Si mientras
+        // viajaba se pidió otra, esa ya calculó su contenido sobre esta misma
+        // base y es la que manda: tocar aquí revertiría su cambio en pantalla.
+        if (token !== writeToken.current) return;
+
+        // Re-parsear lo que acabamos de escribir para que cada tarea lleve el
+        // número de línea que ocupa en el fichero. `serializeTasks` parchea in
+        // situ las que lo tienen y reescribe al final las que no; con esto la
+        // siguiente escritura es un cambio de línea y no un borrar y reañadir.
+        setOnDisk(content);
+        setTasks(parseTasks(content));
+        setDirty(false);
+        if (announce) toast.success('Tareas guardadas');
+        onSaved?.();
+        router.refresh();
+      })
+      .catch((error) => {
+        setDirty(true);
+        toast.error(`No se pudieron guardar las tareas: ${error.message}`);
+      })
+      .finally(() => {
+        inFlight.current -= 1;
+        if (inFlight.current === 0) setSaving(false);
+      });
+
+    return queue.current;
+  };
+
+  /** Aplica un cambio a la lista y lo guarda. */
   const mutate = (updater) => {
-    setTasks(updater);
-    setDirty(true);
+    setTasks((list) => {
+      const next = updater(list);
+      persist(next);
+      return next;
+    });
   };
 
   const toggle = (id) =>
@@ -78,33 +168,8 @@ export default function TaskEditor({ projectPath, initialContent, onSaved }) {
     setNewTaskText('');
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      const content = serializeTasks(tasks, originalContent);
-      const res = await fetch(
-        `/api/projects/${projectPath.split('/').map(encodeURIComponent).join('/')}/tasks.md`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        }
-      );
-      if (!res.ok) throw new Error((await res.json()).error || `Error ${res.status}`);
-
-      // Re-parse from what we just wrote so line numbers line up with the file.
-      setOriginalContent(content);
-      setTasks(parseTasks(content));
-      setDirty(false);
-      toast.success('Tareas guardadas');
-      onSaved?.();
-      router.refresh();
-    } catch (error) {
-      toast.error(`No se pudieron guardar las tareas: ${error.message}`);
-    } finally {
-      setSaving(false);
-    }
-  };
+  /** Reintento manual: solo hace falta si una escritura automática falló. */
+  const save = () => persist(tasks, { announce: true });
 
   const openNote = async (task) => {
     const filename = generateNoteFilename(task);
@@ -166,9 +231,19 @@ export default function TaskEditor({ projectPath, initialContent, onSaved }) {
               </button>
             ))}
           </div>
-          <button className="btn btn-primary" onClick={save} disabled={saving || !dirty}>
-            {saving ? <span className="spinner" /> : <Icon name="save" size={15} />}
-            {dirty ? 'Guardar' : 'Guardado'}
+          {/*
+            Ya no es el paso que guarda: los cambios se escriben solos. Queda
+            como estado —para ver que se ha guardado— y como reintento cuando
+            una escritura falla, que es lo único que deja `dirty` a true.
+          */}
+          <button
+            className={dirty ? 'btn btn-primary' : 'btn btn-ghost'}
+            onClick={save}
+            disabled={saving || !dirty}
+            title={dirty ? 'La última escritura falló. Reintentar.' : 'Los cambios se guardan solos'}
+          >
+            {saving ? <span className="spinner" /> : <Icon name={dirty ? 'refresh' : 'check'} size={15} />}
+            {saving ? 'Guardando…' : dirty ? 'Reintentar' : 'Guardado'}
           </button>
         </div>
       </header>
@@ -256,7 +331,7 @@ export default function TaskEditor({ projectPath, initialContent, onSaved }) {
         onCancel={() => setConfirmDelete(null)}
         onConfirm={() => remove(confirmDelete.id)}
         title="Eliminar tarea"
-        message={`«${confirmDelete?.text}» se quitará de la lista. El cambio no se escribe en disco hasta que pulses Guardar.`}
+        message={`«${confirmDelete?.text}» se borrará de tasks.md. Esta acción no se puede deshacer.`}
         confirmLabel="Eliminar"
         danger
       />

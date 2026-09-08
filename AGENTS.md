@@ -349,6 +349,14 @@ de cometer aquí (por eso existe `lib/file-kinds.js` en paralelo a `fs-utils.js`
   página. En el lector de transcripciones eso metía el panel bajo la barra
   superior; por eso se mueve el `scrollTop` de la lista a mano cuando la lista es
   la que tiene el scroll.
+- **Una lista de selectores CSS casa en orden de documento, no de selector.**
+  `querySelector('input, button')` devuelve el botón si va antes en el DOM. Por
+  eso `Modal.js` busca el primer campo dentro del cuerpo antes de recurrir al
+  primer elemento enfocable del diálogo.
+- **Cuidado con meter un callback en las dependencias de un efecto.** Quien usa
+  estos componentes pasa flechas inline, que cambian de identidad en cada
+  render; el efecto se reejecuta con cada tecla. En `Modal.js` el callback vive
+  en una ref por eso.
 - **Los scripts de Python imprimen emoji, y Windows no.** Un subproceso hereda
   una stdout en cp1252 y el primer emoji lanza un `UnicodeEncodeError` que mata
   el script. Por eso los dos scripts llaman a `_force_utf8_output()` nada más

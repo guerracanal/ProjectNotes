@@ -7,6 +7,32 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.3.2] — 2026-09-08
+
+### Cambiado
+
+- **Las tareas se guardan solas.** Añadir una tarea, marcarla o borrarla escribe
+  ya en `tasks.md`; no hay que pulsar nada después. El botón deja de ser el paso
+  que guarda y pasa a ser estado («Guardado») y reintento, que solo hace falta
+  si una escritura falla. Las escrituras van en fila, así que dos cambios
+  seguidos no pueden llegar al disco en orden inverso.
+
+### Corregido
+
+- **No se podía escribir el nombre de una nota nueva.** El modal llevaba el foco
+  al primer elemento enfocable del diálogo, y como una lista de selectores CSS
+  casa en orden de documento, ese era el botón de cerrar de la cabecera, no el
+  campo. Ahora busca primero un campo dentro del cuerpo.
+- El efecto del modal dependía de `onClose`, que casi siempre llega como flecha
+  inline y cambia de identidad en cada render: cada tecla escrita lo hacía
+  limpiarse y reejecutarse (medido: 6 ejecuciones para 5 caracteres), devolviendo
+  el foco al principio del diálogo. Afectaba a todos los modales, porque
+  `Modal.js` es compartido.
+- `tests/browser/` recoge los dos casos con Playwright. No entran en `npm test`
+  —necesitan un navegador y un servidor en marcha—; instrucciones en su README.
+
+---
+
 ## [1.3.1] — 2026-09-08
 
 ### Corregido
