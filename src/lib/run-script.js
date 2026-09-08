@@ -34,7 +34,16 @@ export function runPythonScript(scriptPath, args = [], { timeout = 60 * 60 * 100
     execFile(
       resolvePython(),
       [scriptPath, ...args],
-      { timeout, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
+      {
+        timeout,
+        maxBuffer: 16 * 1024 * 1024,
+        windowsHide: true,
+        // Los scripts ya fuerzan UTF-8 en su salida, pero esto cubre lo que se
+        // imprime antes de que corra esa línea: un traceback por una
+        // dependencia que falta, por ejemplo. En Windows el hijo hereda una
+        // consola cp1252 y un emoji ahí aborta el proceso entero.
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+      },
       (error, stdout, stderr) => {
         if (error) {
           error.stdout = stdout;

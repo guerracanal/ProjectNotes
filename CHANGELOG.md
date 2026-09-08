@@ -7,6 +7,23 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.3.1] — 2026-09-08
+
+### Corregido
+
+- **La transcripción moría en Windows antes de tocar el vídeo.** Un subproceso
+  hereda una consola en cp1252, que no sabe codificar los emoji de los mensajes
+  de progreso; el primer `print` lanzaba un `UnicodeEncodeError` y abortaba el
+  script entero. Los dos scripts de Python fuerzan ahora UTF-8 en su salida, y
+  al lanzarlos se pasa además `PYTHONIOENCODING=utf-8` para cubrir lo que se
+  imprima antes de esa línea (el traceback de una dependencia que falte, por
+  ejemplo). Nada que ver con el paquete standalone: pasaba igual con
+  `npm run dev`.
+- `scripts/tests/test_transcribir.py` reproduce el caso forzando una stdout
+  cp1252, porque en Linux la consola es UTF-8 y el fallo no aparece solo.
+
+---
+
 ## [1.3.0] — 2026-09-07
 
 ### Añadido

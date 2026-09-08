@@ -349,6 +349,11 @@ de cometer aquí (por eso existe `lib/file-kinds.js` en paralelo a `fs-utils.js`
   página. En el lector de transcripciones eso metía el panel bajo la barra
   superior; por eso se mueve el `scrollTop` de la lista a mano cuando la lista es
   la que tiene el scroll.
+- **Los scripts de Python imprimen emoji, y Windows no.** Un subproceso hereda
+  una stdout en cp1252 y el primer emoji lanza un `UnicodeEncodeError` que mata
+  el script. Por eso los dos scripts llaman a `_force_utf8_output()` nada más
+  importar, y `run-script.js` pasa `PYTHONIOENCODING=utf-8`. Si añades un
+  script de Python, copia ese bloque.
 - **`output: 'standalone'` no copia los estáticos.** Ni `.next/static` ni
   `public/`. Está documentado por Next y es el fallo clásico: la app carga sin
   estilos y con los iconos rotos. `build-standalone.mjs` los copia a mano.

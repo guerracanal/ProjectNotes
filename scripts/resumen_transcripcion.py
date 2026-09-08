@@ -17,6 +17,27 @@ import os
 import sys
 from pathlib import Path
 
+
+def _force_utf8_output():
+    """
+    Que la salida no dependa de la consola de quien lanza el script.
+
+    En Windows, un proceso hijo hereda una stdout en cp1252, que no sabe
+    codificar los emoji de los mensajes de progreso. El resultado no es un
+    carácter feo: es un UnicodeEncodeError que aborta la transcripción entera
+    en la primera línea, antes de tocar el vídeo. Node lee esta salida como
+    UTF-8, así que forzarlo aquí es además lo correcto.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError):
+            # Ya sustituido (tests) o sin soporte: mejor seguir que reventar.
+            pass
+
+
+_force_utf8_output()
+
 PROMPT = """Analiza la siguiente transcripción de una reunión y devuelve un resumen en español, en markdown.
 
 Estructura tu respuesta exactamente así:

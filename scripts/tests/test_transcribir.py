@@ -10,7 +10,9 @@ Ejecutar:  python scripts/tests/test_transcribir.py
 """
 
 import os
+import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -122,6 +124,33 @@ check_true(
 doc_vacio = build_document({"language": None}, [], model_name="tiny", media_filename="x.mp4")
 check("duración cero sin segmentos", doc_vacio["duration"], 0.0)
 check("sin segmentos, lista vacía", doc_vacio["segments"], [])
+
+print("\nsalida en una consola que no habla UTF-8")
+
+# Este es el fallo que Jorge se encontró en Windows: un subproceso hereda una
+# stdout en cp1252, y el primer emoji de los mensajes de progreso aborta la
+# transcripción entera antes de tocar el vídeo. En Linux no se reproduce solo
+# —la consola es UTF-8—, así que hay que forzarlo.
+_tmp = tempfile.mkdtemp()
+_media = os.path.join(_tmp, "reunion.mp4")
+for _nombre in ("reunion.mp4", "reunion_transcripcion.txt", "reunion_transcripcion.json"):
+    open(os.path.join(_tmp, _nombre), "w").close()
+
+_env = dict(os.environ)
+_env["PYTHONIOENCODING"] = "cp1252:strict"
+_ejecucion = subprocess.run(
+    [sys.executable, os.path.join(os.path.dirname(__file__), "..", "transcribir_video.py"), _media],
+    capture_output=True,
+    env=_env,
+)
+_err = _ejecucion.stderr.decode("utf-8", "replace")
+
+check("no revienta con stdout en cp1252", _ejecucion.returncode, 0)
+check_true("no hay UnicodeEncodeError", "UnicodeEncodeError" not in _err, _err[-200:])
+check_true(
+    "el mensaje llega entero",
+    "Ya existe la transcripción" in _ejecucion.stdout.decode("utf-8", "replace"),
+)
 
 print()
 if failures:
