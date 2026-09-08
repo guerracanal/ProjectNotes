@@ -57,3 +57,11 @@ TEST_LARGE_FILES=1 node tests/gdrive.test.mjs
 
 No es lo predeterminado porque un fichero disperso de 2,5 GiB es gratis en
 Linux, pero en NTFS puede acabar ocupando el disco de verdad.
+
+## Qué entra en la sincronización
+
+`sync-plan.test.mjs` ejecuta la ruta real de la API contra un Drive de mentira y
+comprueba que los vídeos no viajan en ninguna de las dos direcciones. Para que
+la ruta se pueda importar fuera de Next, `next-shim.mjs` traduce el alias `@/` y
+sustituye `next/server` por lo mínimo que usa (`tests/stubs/`). El código de la
+ruta se ejecuta tal cual: no hay una copia de su lógica en el test.

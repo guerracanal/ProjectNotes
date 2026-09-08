@@ -138,6 +138,7 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
         body: JSON.stringify({
           accessToken,
           folderName: folderName.trim() || 'ProjectNotes',
+          syncVideos: Boolean(settings.gdriveSyncVideos),
           forceMode: syncMode,
         }),
       });
@@ -347,6 +348,22 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
             </span>
           </label>
 
+          <label className="gd-autosync">
+            <span
+              className="switch"
+              data-on={String(Boolean(settings.gdriveSyncVideos))}
+              onClick={() => updateSettings({ gdriveSyncVideos: !settings.gdriveSyncVideos })}
+            />
+            <span className="gd-autosync-text">
+              <strong>Sincronizar también los vídeos</strong>
+              <span>
+                Desactivado, las grabaciones se quedan en local y a Drive solo van
+                las notas, transcripciones y resúmenes. Una reunión son varios GB
+                de vídeo frente a unos KB de transcripción.
+              </span>
+            </span>
+          </label>
+
           {result && (
             <div className="gd-result">
               <div className="gd-stats">
@@ -362,6 +379,12 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
                   <strong>{result.stats.foldersCreatedLocal + result.stats.foldersCreatedDrive}</strong>
                   <span>Carpetas</span>
                 </div>
+                {result.stats.skipped > 0 && (
+                  <div>
+                    <strong>{result.stats.skipped}</strong>
+                    <span>Vídeos omitidos</span>
+                  </div>
+                )}
                 {result.stats.failed > 0 && (
                   <div className="gd-failed">
                     <strong>{result.stats.failed}</strong>

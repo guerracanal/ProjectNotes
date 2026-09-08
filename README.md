@@ -29,7 +29,8 @@ nada de nube obligatoria.
   proveedores gratuitos (Gemini, Groq) o en local con Ollama.
 - **Instalable** en móvil, tablet y escritorio como PWA, con ruta documentada
   para generar un APK de Android.
-- **Sincronización bidireccional** opcional con Google Drive.
+- **Sincronización bidireccional** opcional con Google Drive. Los vídeos se
+  quedan en local: a Drive van las notas, transcripciones y resúmenes.
 
 ---
 

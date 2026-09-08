@@ -30,6 +30,9 @@ export const DEFAULT_SETTINGS = {
   gdriveAutoSyncInterval: 5,
   gdriveLastSync: null,
   gdriveSyncStats: null,
+  // Los vídeos no viajan a Drive: lo que hace falta allí es la transcripción,
+  // que ocupa unos KB frente a los GB del original.
+  gdriveSyncVideos: false,
 };
 
 export function SettingsProvider({ children }) {

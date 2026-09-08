@@ -10,7 +10,9 @@
 import { createServer } from 'node:http';
 
 export function startMockDrive() {
-  const state = { received: new Map(), sessions: new Map(), nextId: 1 };
+  // `files` es el Drive: carpetas y ficheros con su padre, como los devuelve la
+  // API. `received` es lo que ha llegado en cada subida.
+  const state = { received: new Map(), sessions: new Map(), files: [], nextId: 1 };
 
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -18,6 +20,35 @@ export function startMockDrive() {
       res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
       res.end(JSON.stringify(body));
     };
+
+    // Listado y búsqueda de carpetas.
+    if (req.method === 'GET' && url.pathname === '/drive/files') {
+      const q = url.searchParams.get('q') || '';
+      const nombre = q.match(/name='([^']+)'/)?.[1];
+      if (nombre) {
+        return json({ files: state.files.filter((f) => f.name === nombre && !f.parents) });
+      }
+      return json({ files: state.files });
+    }
+
+    // Crear carpeta.
+    if (req.method === 'POST' && url.pathname === '/drive/files') {
+      let cuerpo = '';
+      req.on('data', (c) => (cuerpo += c));
+      req.on('end', () => {
+        const { name, parents } = JSON.parse(cuerpo || '{}');
+        const carpeta = {
+          id: `carpeta-${state.nextId++}`,
+          name,
+          mimeType: 'application/vnd.google-apps.folder',
+          modifiedTime: new Date().toISOString(),
+          parents,
+        };
+        state.files.push(carpeta);
+        json(carpeta);
+      });
+      return;
+    }
 
     // Descarga: el id del fichero lleva el tamaño detrás («grande-1234»), que
     // es más simple que otro parámetro —el cliente ya añade el suyo (?alt=media).

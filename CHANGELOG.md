@@ -7,6 +7,23 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.4.0] — 2026-09-08
+
+### Cambiado
+
+- **Los vídeos ya no se sincronizan con Drive.** Ni se suben ni se descargan.
+  Lo que hace falta tener allí —y lo que el asistente busca— es la
+  transcripción y el resumen: unos KB frente a los varios GB del original. La
+  grabación se queda en local, junto a su transcripción.
+  - Hay un interruptor en el modal de Drive para volver al comportamiento
+    anterior, y el resumen dice cuántos vídeos se han omitido.
+  - Un vídeo que ya estuviera subido se queda donde está: no se borra de Drive
+    ni se vuelve a bajar.
+  - Afecta a `.mp4`, `.webm`, `.mkv`, `.mov` y `.avi`. El audio (`.mp3`,
+    `.m4a`…) sí se sigue sincronizando.
+
+---
+
 ## [1.3.4] — 2026-09-08
 
 ### Corregido

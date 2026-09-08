@@ -9,6 +9,7 @@ import {
     createFolderInDrive
 } from '@/lib/gdrive';
 import { PROJECTS_DIR } from '@/lib/paths';
+import { VIDEO_EXTENSIONS } from '@/lib/fs-utils';
 
 /**
  * Recursively lists all files and folders in the local projects_data directory.
@@ -142,9 +143,27 @@ function buildDrivePathsMap(driveFiles, rootFolderId) {
     return { relativePathsMap, driveFoldersMap };
 }
 
+/**
+ * Los vídeos no se sincronizan salvo que se pida.
+ *
+ * Una grabación de reunión son varios GB, y lo que hace falta tener en Drive
+ * —y lo que el asistente busca— es la transcripción y el resumen, que ocupan
+ * unos pocos KB. Subir el vídeo original es mover mil veces más datos para
+ * conseguir lo mismo. Se queda en local, junto a su transcripción.
+ */
+function esVideo(relPath) {
+    const punto = relPath.lastIndexOf('.');
+    return punto !== -1 && VIDEO_EXTENSIONS.includes(relPath.slice(punto).toLowerCase());
+}
+
 export async function POST(request) {
     try {
-        const { accessToken, folderName = 'ProjectNotes', forceMode = 'two-way' } = await request.json();
+        const {
+            accessToken,
+            folderName = 'ProjectNotes',
+            forceMode = 'two-way',
+            syncVideos = false,
+        } = await request.json();
 
         if (!accessToken) {
             return NextResponse.json({ error: 'Access token is required' }, { status: 400 });
@@ -178,6 +197,7 @@ export async function POST(request) {
         const toDownload = [];
         const logs = [];
         const failed = [];
+        const skipped = [];
         let uploaded = 0;
         let downloaded = 0;
 
@@ -185,6 +205,13 @@ export async function POST(request) {
         for (const relPath of allPaths) {
             const localItem = localMap[relPath];
             const driveItem = driveMap[relPath];
+
+            // Filtrar aquí y no al ejecutar cubre las dos direcciones de una
+            // vez: ni se sube el vídeo local ni se baja el que ya esté en Drive.
+            if (!syncVideos && esVideo(relPath)) {
+                skipped.push(relPath);
+                continue;
+            }
 
             const isFolder = (localItem && localItem.type === 'folder') || 
                              (driveItem && driveItem.mimeType === 'application/vnd.google-apps.folder');
@@ -226,6 +253,10 @@ export async function POST(request) {
                     }
                 }
             }
+        }
+
+        if (skipped.length > 0) {
+            logs.push(`[Omitidos] ${skipped.length} vídeo(s), que no se sincronizan: ${skipped.join(', ')}`);
         }
 
         // Sort folders by depth/length to ensure parents are created before subfolders
@@ -339,6 +370,7 @@ export async function POST(request) {
             uploaded,
             downloaded,
             failed: failed.length,
+            skipped: skipped.length,
             totalProcessed: toCreateFolderLocal.length + toCreateFolderDrive.length + uploaded + downloaded
         };
 
@@ -346,6 +378,7 @@ export async function POST(request) {
             success: true,
             stats,
             failed,
+            skipped,
             logs
         });
 
