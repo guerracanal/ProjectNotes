@@ -45,6 +45,9 @@ next-env.d.ts
 # ProjectNotes
 /.projectnotes/
 
+/projects_data/
+
+
 # Paquete standalone: salida de build (`npm run build:standalone`).
 # Lleva node_modules dentro, así que se genera, no se versiona.
 /standalone/
