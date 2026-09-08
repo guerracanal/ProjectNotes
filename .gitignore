@@ -51,3 +51,6 @@ next-env.d.ts
 # Paquete standalone: salida de build (`npm run build:standalone`).
 # Lleva node_modules dentro, así que se genera, no se versiona.
 /standalone/
+
+# El zip del paquete standalone, igual que la carpeta: se genera.
+/standalone.zip

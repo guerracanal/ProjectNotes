@@ -60,7 +60,8 @@ scripts/
   transcribir_video.py    ← ffmpeg → Whisper → *_transcripcion.txt
   resumen_transcripcion.py← Gemini → *_transcripcion_resumen.txt
   generate-icons.mjs      ← Genera los PNG/ICO de la PWA sin dependencias nativas
-  build-standalone.mjs    ← Empaqueta standalone/ (ver docs/STANDALONE.md)
+  build-standalone.mjs    ← Empaqueta standalone/ + standalone.zip
+  lib/zip.mjs             ← Escritor de ZIP sin dependencias (ver su cabecera)
   doctor.mjs              ← Qué proveedores y modelos de chat funcionan de verdad
   lib/load-env.mjs        ← Lector de .env para los scripts que corren fuera de Next
   templates/
@@ -362,6 +363,10 @@ de cometer aquí (por eso existe `lib/file-kinds.js` en paralelo a `fs-utils.js`
   el script. Por eso los dos scripts llaman a `_force_utf8_output()` nada más
   importar, y `run-script.js` pasa `PYTHONIOENCODING=utf-8`. Si añades un
   script de Python, copia ese bloque.
+- **Nada de dejar los scripts del repo dentro del paquete standalone.** Next
+  copia el `package.json` entero; si se deja, un `npm run` desde dentro de
+  `standalone/` ejecuta el script del proyecto con el cwd cambiado. Por eso el
+  build escribe un manifiesto mínimo.
 - **`output: 'standalone'` no copia los estáticos.** Ni `.next/static` ni
   `public/`. Está documentado por Next y es el fallo clásico: la app carga sin
   estilos y con los iconos rotos. `build-standalone.mjs` los copia a mano.

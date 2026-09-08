@@ -8,22 +8,24 @@
  * estáticos ni `public/` — eso está documentado y hay que copiarlo a mano.
  * Tampoco copia los scripts de Python, que la app lanza como subproceso.
  *
- *   node scripts/build-standalone.mjs [--skip-build] [--out <dir>]
+ *   node scripts/build-standalone.mjs [--skip-build] [--no-zip] [--out <dir>]
  */
 
 import { execFileSync } from 'node:child_process';
-import { cp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { zipDirectory } from './lib/zip.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 function parseArgs(argv) {
-  const options = { skipBuild: false, out: path.join(ROOT, 'standalone') };
+  const options = { skipBuild: false, noZip: false, out: path.join(ROOT, 'standalone') };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--skip-build') options.skipBuild = true;
+    else if (arg === '--no-zip') options.noZip = true;
     else if (arg === '--out') options.out = path.resolve(argv[++i] ?? '');
     else if (arg === '--help' || arg === '-h') options.help = true;
     else throw new Error(`Opción desconocida: ${arg}`);
@@ -49,12 +51,23 @@ const human = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
-    console.log('Uso: node scripts/build-standalone.mjs [--skip-build] [--out <dir>]');
+    console.log('Uso: node scripts/build-standalone.mjs [--skip-build] [--no-zip] [--out <dir>]');
     return;
   }
 
   const out = options.out;
   const nextStandalone = path.join(ROOT, '.next', 'standalone');
+
+  // El paso siguiente borra `out` entero. Si alguien lanza esto desde dentro
+  // del propio paquete —fácil, porque hasta ahora llevaba una copia de los
+  // scripts del repo— más vale decirlo que arrasar el directorio.
+  const dentroDeLaSalida = process.cwd() === out || process.cwd().startsWith(out + path.sep);
+  if (dentroDeLaSalida || out === ROOT || ROOT.startsWith(out + path.sep)) {
+    throw new Error(
+      `Esto se lanza desde la raíz del proyecto, no desde ${path.basename(out)}/.\n` +
+        `  cd ${ROOT}\n  npm run build:standalone`
+    );
+  }
 
   if (!options.skipBuild) {
     step('next build');
@@ -69,15 +82,17 @@ async function main() {
 
   step(`limpiando ${path.relative(ROOT, out) || out}`);
   await rm(out, { recursive: true, force: true });
+  await rm(`${out}.zip`, { force: true });
   await mkdir(out, { recursive: true });
 
-  // Del volcado de Next solo interesan estas cuatro cosas: el resto (src, docs,
+  // Del volcado de Next solo interesan estas dos cosas: el resto (src, docs,
   // tests, projects_data...) lo arrastra el rastreo sin que haga falta.
   step('servidor y dependencias');
-  for (const entry of ['.next', 'node_modules', 'package.json']) {
+  for (const entry of ['.next', 'node_modules']) {
     const from = path.join(nextStandalone, entry);
     if (existsSync(from)) await cp(from, path.join(out, entry), { recursive: true });
   }
+  await writeFile(path.join(out, 'package.json'), await bundleManifest(), 'utf8');
   // El entry de Next pasa a segundo plano: `server.js` es nuestro envoltorio.
   await cp(path.join(nextStandalone, 'server.js'), path.join(out, 'next-server.js'));
 
@@ -102,11 +117,50 @@ async function main() {
   await writeFile(path.join(out, 'README.md'), readme(), 'utf8');
 
   const size = await treeSize(out);
+
+  let zip = null;
+  if (!options.noZip) {
+    step('empaquetando en zip');
+    const zipPath = `${out}.zip`;
+    const { entries, bytes } = await zipDirectory(out, zipPath, { root: path.basename(out) });
+    zip = { path: zipPath, entries, bytes };
+  }
+
+  const rel = (p) => path.relative(ROOT, p) || p;
   console.log('');
-  console.log(`\x1b[32m✓\x1b[0m ${path.relative(ROOT, out) || out} listo — ${human(size)}`);
+  console.log(`\x1b[32m✓\x1b[0m ${rel(out)} listo — ${human(size)}`);
+  if (zip) {
+    console.log(`\x1b[32m✓\x1b[0m ${rel(zip.path)} — ${human(zip.bytes)}, ${zip.entries} ficheros`);
+  }
   console.log('');
-  console.log(`   cd ${path.relative(ROOT, out) || out} && node server.js`);
+  console.log(`   cd ${rel(out)} && node server.js`);
   console.log('');
+}
+
+/**
+ * El `package.json` del paquete.
+ *
+ * Deliberadamente mínimo. Next copia el del repo entero, con todos sus scripts,
+ * y eso convierte la carpeta en una trampa: un `npm run build:standalone` desde
+ * dentro ejecuta el script del proyecto con el directorio de trabajo cambiado.
+ * Aquí solo queda `start`, que es lo único que tiene sentido ejecutar.
+ *
+ * `type` se arrastra del repo porque decide si Node lee `server.js` como CommonJS
+ * o como módulo, y el que genera Next es CommonJS.
+ */
+async function bundleManifest() {
+  const raiz = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
+  return `${JSON.stringify(
+    {
+      name: `${raiz.name}-standalone`,
+      version: raiz.version,
+      private: true,
+      ...(raiz.type ? { type: raiz.type } : {}),
+      scripts: { start: 'node server.js' },
+    },
+    null,
+    2
+  )}\n`;
 }
 
 function readme() {

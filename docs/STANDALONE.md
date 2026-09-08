@@ -14,6 +14,10 @@ O, desde la raíz del proyecto, `npm run start:standalone`.
 La carpeta pesa unos 18 MB y contiene el servidor, los estáticos, `public/`,
 las dependencias que el código alcanza de verdad y los scripts de Python.
 
+Al lado queda **`standalone.zip`** (unos 4 MB) con lo mismo dentro, para
+copiarlo a otra máquina de una pieza. Descomprimir y `node server.js`.
+Con `--no-zip` se salta ese paso si solo vas a usarlo en local.
+
 ---
 
 ## Para qué sirve
@@ -43,7 +47,13 @@ estás tocando y pasa a ser algo que usas:
    estilos y con los iconos rotos).
 3. Copia los scripts de Python, que el servidor lanza como subproceso al
    transcribir o resumir. Sin ellos esas dos acciones fallan.
-4. Escribe el `server.js` de entrada, un envoltorio sobre el de Next.
+4. Escribe el `server.js` de entrada, un envoltorio sobre el de Next, y un
+   `package.json` mínimo con un solo script (`start`). Es a propósito: Next
+   copia el del repo entero, con todos sus scripts, y eso convierte la carpeta
+   en una trampa —un `npm run build:standalone` desde dentro ejecutaría el
+   script del proyecto con el directorio de trabajo cambiado.
+5. Comprime la carpeta en `standalone.zip`, sin depender de que haya `zip` o
+   `tar` instalados: el formato lo escribe `scripts/lib/zip.mjs`.
 
 La carpeta se borra y se rehace en cada build, así que **no editar nada dentro**.
 El envoltorio vive en `scripts/templates/standalone-server.js`.
@@ -91,7 +101,7 @@ PORT=8080 PROJECTS_DIR=/mnt/nas/notas node server.js
 
 ## Llevárselo a otra máquina
 
-Copiar la carpeta entera. Necesita Node 20 o superior y nada más. Allí:
+Copiar la carpeta entera, o llevarse `standalone.zip` y descomprimirlo allí. Necesita Node 20 o superior y nada más. Allí:
 
 1. Un `projects_data/` dentro de la carpeta, o `PROJECTS_DIR` apuntando a él.
    Si no hay ninguno, arranca vacío y lo crea.

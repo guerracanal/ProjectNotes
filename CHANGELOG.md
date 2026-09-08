@@ -7,6 +7,29 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.3.3] — 2026-09-08
+
+### Añadido
+
+- **`npm run build:standalone` genera también `standalone.zip`** (unos 4 MB
+  frente a los 18 de la carpeta), para llevarse el paquete a otra máquina de una
+  pieza. `--no-zip` se lo salta.
+- El zip lo escribe `scripts/lib/zip.mjs`, en Node y sin dependencias: GNU tar
+  no sabe hacer zip, `zip` no viene en Windows y `Compress-Archive` no existe
+  fuera de PowerShell. `tests/zip.test.mjs` valida el formato con el módulo
+  `zipfile` de Python, que es una implementación independiente.
+
+### Corregido
+
+- **El paquete standalone llevaba dentro los scripts del repo.** Next copia el
+  `package.json` entero, así que `npm run build:standalone` desde dentro de
+  `standalone/` ejecutaba el script del proyecto con el directorio de trabajo
+  cambiado y fallaba con un `MODULE_NOT_FOUND` desconcertante. El paquete lleva
+  ahora un `package.json` mínimo con un solo script (`start`), y el propio
+  script de build se niega a ejecutarse desde dentro de su carpeta de salida.
+
+---
+
 ## [1.3.2] — 2026-09-08
 
 ### Cambiado
