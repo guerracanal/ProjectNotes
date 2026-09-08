@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs';
 import path from 'path';
 
 const execAsync = promisify(exec);
@@ -39,8 +40,10 @@ export async function POST(request) {
                 jobs.set(jobId, { ...jobs.get(jobId), status: 'running' });
 
                 // Use venv Python interpreter
-                const pythonPath = path.join(process.cwd(), 'venv', 'bin', 'python3');
-                const { stdout, stderr } = await execAsync(`"${pythonPath}" "${scriptPath}" "${fullVideoPath}"`);
+                const pythonExecutable = process.platform === 'win32' ? 'python.exe' : 'python3';
+                const pythonPath = path.join(process.cwd(), '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', pythonExecutable);
+                const resolvedPythonPath = fs.existsSync(pythonPath) ? pythonPath : pythonExecutable;
+                const { stdout, stderr } = await execAsync(`"${resolvedPythonPath}" "${scriptPath}" "${fullVideoPath}"`);
 
                 jobs.set(jobId, {
                     ...jobs.get(jobId),

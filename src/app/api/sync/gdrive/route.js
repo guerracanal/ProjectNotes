@@ -85,6 +85,11 @@ function getMimeType(filePath) {
     }
 }
 
+function shouldSkipUpload(relPath) {
+    const ext = path.extname(relPath).toLowerCase();
+    return ext === '.mp4';
+}
+
 /**
  * Reconstructs the relative paths of files in Google Drive relative to the root folder ID.
  */
@@ -199,7 +204,11 @@ export async function POST(request) {
             // File comparisons
             if (localItem && !driveItem) {
                 // Local only -> upload
-                toUpload.push({ path: relPath, reason: 'new local file' });
+                if (shouldSkipUpload(relPath)) {
+                    logs.push(`[Omitido] ${relPath} (no se sube .mp4)`);
+                } else {
+                    toUpload.push({ path: relPath, reason: 'new local file' });
+                }
             } else if (!localItem && driveItem) {
                 // Drive only -> download
                 toDownload.push({ path: relPath, reason: 'new remote file' });
@@ -212,13 +221,21 @@ export async function POST(request) {
                 const timeDiff = localMtime - driveMtime;
 
                 if (forceMode === 'upload') {
-                    toUpload.push({ path: relPath, reason: 'force upload override' });
+                    if (shouldSkipUpload(relPath)) {
+                        logs.push(`[Omitido] ${relPath} (no se sube .mp4 en modo force upload)`);
+                    } else {
+                        toUpload.push({ path: relPath, reason: 'force upload override' });
+                    }
                 } else if (forceMode === 'download') {
                     toDownload.push({ path: relPath, reason: 'force download override' });
                 } else {
                     // Two-way comparison
                     if (timeDiff > 2000) {
-                        toUpload.push({ path: relPath, reason: `local is newer (${Math.round(timeDiff / 1000)}s)` });
+                        if (shouldSkipUpload(relPath)) {
+                            logs.push(`[Omitido] ${relPath} (no se sube .mp4 aunque local sea más nuevo)`);
+                        } else {
+                            toUpload.push({ path: relPath, reason: `local is newer (${Math.round(timeDiff / 1000)}s)` });
+                        }
                     } else if (timeDiff < -2000) {
                         toDownload.push({ path: relPath, reason: `drive is newer (${Math.round(-timeDiff / 1000)}s)` });
                     }
@@ -279,6 +296,11 @@ export async function POST(request) {
         // Execute uploads
         for (const fileObj of toUpload) {
             const relPath = fileObj.path;
+            if (shouldSkipUpload(relPath)) {
+                logs.push(`[Omitido] ${relPath} (saltado en etapa de subida)`);
+                continue;
+            }
+
             const localFile = localMap[relPath];
             const fullLocalPath = localFile.fullPath;
 

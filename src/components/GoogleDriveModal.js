@@ -9,6 +9,7 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
     const [folderNameInput, setFolderNameInput] = useState(settings.gdriveFolderName || 'ProjectNotes');
     const [accessToken, setAccessToken] = useState('');
     const [email, setEmail] = useState('');
+    const [tokenExpiry, setTokenExpiry] = useState(null);
     
     // Sync states
     const [syncing, setSyncing] = useState(false);
@@ -20,17 +21,46 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
 
     const logsEndRef = useRef(null);
 
-    // Dynamic Google API Script Load
+    // Dynamic Google API Script Load + Load Client ID from env
     useEffect(() => {
         if (typeof window === 'undefined') return;
         
-        // Restore session token if valid
-        const savedToken = sessionStorage.getItem('gdrive_access_token');
-        const savedEmail = sessionStorage.getItem('gdrive_user_email');
+        // Restore token and user info from localStorage (persists between sessions)
+        const savedToken = localStorage.getItem('gdrive_access_token');
+        const savedEmail = localStorage.getItem('gdrive_user_email');
+        const savedExpiry = localStorage.getItem('gdrive_token_expiry');
+        
         if (savedToken && savedEmail) {
-            setAccessToken(savedToken);
-            setEmail(savedEmail);
+            // Check if token is expired
+            if (savedExpiry && new Date(savedExpiry) > new Date()) {
+                setAccessToken(savedToken);
+                setEmail(savedEmail);
+                setTokenExpiry(savedExpiry);
+            } else {
+                // Token expired, clear stored credentials
+                localStorage.removeItem('gdrive_access_token');
+                localStorage.removeItem('gdrive_user_email');
+                localStorage.removeItem('gdrive_token_expiry');
+            }
         }
+
+        // Load Client ID from environment if available
+        const loadClientIdFromEnv = async () => {
+            try {
+                const response = await fetch('/api/config');
+                if (response.ok) {
+                    const config = await response.json();
+                    if (config.googleOAuthClientId && !clientIdInput) {
+                        setClientIdInput(config.googleOAuthClientId);
+                        updateSettings({ gdriveClientId: config.googleOAuthClientId });
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading config from API:', e);
+            }
+        };
+        
+        loadClientIdFromEnv();
 
         if (window.google) return;
 
@@ -58,7 +88,8 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
             if (response.ok) {
                 const data = await response.json();
                 setEmail(data.email);
-                sessionStorage.setItem('gdrive_user_email', data.email);
+                // Persist email in localStorage
+                localStorage.setItem('gdrive_user_email', data.email);
                 return data.email;
             }
         } catch (e) {
@@ -91,7 +122,14 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
                 callback: async (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
                         setAccessToken(tokenResponse.access_token);
-                        sessionStorage.setItem('gdrive_access_token', tokenResponse.access_token);
+                        // Persist token to localStorage (survives session restarts)
+                        localStorage.setItem('gdrive_access_token', tokenResponse.access_token);
+                        
+                        // Calculate and store expiry time (tokens expire in ~1 hour)
+                        const expiryTime = new Date();
+                        expiryTime.setSeconds(expiryTime.getSeconds() + (tokenResponse.expires_in || 3599));
+                        setTokenExpiry(expiryTime.toISOString());
+                        localStorage.setItem('gdrive_token_expiry', expiryTime.toISOString());
                         
                         await fetchUserInfo(tokenResponse.access_token);
                         setSyncError(null);
@@ -113,6 +151,11 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
     const handleDisconnect = () => {
         setAccessToken('');
         setEmail('');
+        setTokenExpiry(null);
+        // Clear both localStorage and sessionStorage
+        localStorage.removeItem('gdrive_access_token');
+        localStorage.removeItem('gdrive_user_email');
+        localStorage.removeItem('gdrive_token_expiry');
         sessionStorage.removeItem('gdrive_access_token');
         sessionStorage.removeItem('gdrive_user_email');
         setSyncResult(null);
@@ -168,6 +211,11 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
             if (isScopeError) {
                 setAccessToken('');
                 setEmail('');
+                setTokenExpiry(null);
+                // Clear both localStorage and sessionStorage
+                localStorage.removeItem('gdrive_access_token');
+                localStorage.removeItem('gdrive_user_email');
+                localStorage.removeItem('gdrive_token_expiry');
                 sessionStorage.removeItem('gdrive_access_token');
                 sessionStorage.removeItem('gdrive_user_email');
                 setSyncResult(null);
