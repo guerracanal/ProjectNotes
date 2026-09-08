@@ -153,11 +153,22 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
         fetch('/api/knowledge', { method: 'POST' }).catch(() => {});
       }
 
-      toast.success(
-        data.stats.totalProcessed > 0
-          ? `Sincronización completada: ${data.stats.totalProcessed} elementos`
-          : 'Todo ya estaba sincronizado'
-      );
+      // Un fichero que falla no tumba la sincronización, pero tampoco puede
+      // pasar por buena: decir «completada» cuando algo se quedó fuera es lo
+      // peor que puede hacer una herramienta de sincronización.
+      if (data.stats.failed > 0) {
+        toast.error(
+          `Sincronizados ${data.stats.totalProcessed}, con ${data.stats.failed} ${
+            data.stats.failed === 1 ? 'fichero que no pudo transferirse' : 'ficheros que no pudieron transferirse'
+          }. Mira el detalle.`
+        );
+      } else {
+        toast.success(
+          data.stats.totalProcessed > 0
+            ? `Sincronización completada: ${data.stats.totalProcessed} elementos`
+            : 'Todo ya estaba sincronizado'
+        );
+      }
     } catch (err) {
       const message = err.message || 'Error de conexión';
       const scopeProblem = /403|scope|permission|insufficient/i.test(message);
@@ -351,7 +362,26 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
                   <strong>{result.stats.foldersCreatedLocal + result.stats.foldersCreatedDrive}</strong>
                   <span>Carpetas</span>
                 </div>
+                {result.stats.failed > 0 && (
+                  <div className="gd-failed">
+                    <strong>{result.stats.failed}</strong>
+                    <span>Con error</span>
+                  </div>
+                )}
               </div>
+
+              {result.failed?.length > 0 && (
+                <ul className="gd-failures">
+                  {result.failed.map((item) => (
+                    <li key={`${item.direction}-${item.path}`}>
+                      <Icon name="alert-triangle" size={14} />
+                      <span>
+                        <code>{item.path}</code> — {item.message}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
               {result.logs?.length > 0 && (
                 <>
@@ -539,6 +569,28 @@ export default function GoogleDriveModal({ isOpen, onClose, onSyncComplete }) {
           color: var(--text-subtle);
         }
 
+        .gd-failed strong {
+          color: var(--danger);
+        }
+        .gd-failures {
+          list-style: none;
+          margin: 12px 0 0;
+          padding: 0;
+          display: grid;
+          gap: 8px;
+        }
+        .gd-failures li {
+          display: flex;
+          gap: 8px;
+          align-items: flex-start;
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--danger);
+        }
+        .gd-failures code {
+          color: var(--text);
+          word-break: break-all;
+        }
         .gd-logs {
           max-height: 200px;
           overflow: auto;

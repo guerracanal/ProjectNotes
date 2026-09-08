@@ -223,7 +223,7 @@ npm run build   # build de producción
 npm run start   # servir el build (necesario para probar el service worker)
 npm run lint    # linter
 npm run icons   # regenerar los iconos de la PWA
-npm run test    # pruebas (rutas, zip, transcripción, adaptadores de chat, prompt)
+npm run test    # pruebas (rutas, zip, Drive, transcripción, adaptadores de chat, prompt)
 npm run doctor  # comprueba qué proveedores y modelos de chat funcionan
 
 npm run build:standalone   # empaqueta standalone/ (~18 MB) y standalone.zip (~4 MB)

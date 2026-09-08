@@ -363,6 +363,11 @@ de cometer aquí (por eso existe `lib/file-kinds.js` en paralelo a `fs-utils.js`
   el script. Por eso los dos scripts llaman a `_force_utf8_output()` nada más
   importar, y `run-script.js` pasa `PYTHONIOENCODING=utf-8`. Si añades un
   script de Python, copia ese bloque.
+- **Nada de leer un fichero de usuario entero en memoria.** Aquí hay vídeos de
+  varios GB. `fs.readFile` revienta pasados 2 GiB (`ERR_FS_FILE_TOO_LARGE`) y
+  antes de eso ya se come la RAM. Y ojo con `fetch`: con `Content-Length`
+  explícito materializa el cuerpo entero, así que para subir un flujo se usa el
+  cliente HTTP de Node (ver `putStream` en `lib/gdrive.js`).
 - **Nada de dejar los scripts del repo dentro del paquete standalone.** Next
   copia el `package.json` entero; si se deja, un `npm run` desde dentro de
   `standalone/` ejecuta el script del proyecto con el cwd cambiado. Por eso el

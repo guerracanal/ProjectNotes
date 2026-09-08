@@ -43,3 +43,17 @@ específicos de Windows aparecen al usarlo, no al probarlo.
 
 El comportamiento real de cada modelo de cada proveedor. Los simuladores cubren
 el protocolo; para saber qué modelos responden de verdad está `npm run doctor`.
+
+## Ficheros grandes en la sincronización con Drive
+
+`gdrive.test.mjs` comprueba, contra un Drive de mentira, que subir y bajar no
+carga el fichero en memoria. Por defecto usa 300 MB, que basta para detectar un
+regreso a `readFile`. Para probar el caso que dio el fallo original —el tope
+duro de 2 GiB de `fs.readFile`:
+
+```bash
+TEST_LARGE_FILES=1 node tests/gdrive.test.mjs
+```
+
+No es lo predeterminado porque un fichero disperso de 2,5 GiB es gratis en
+Linux, pero en NTFS puede acabar ocupando el disco de verdad.

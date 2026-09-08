@@ -7,6 +7,35 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.3.4] — 2026-09-08
+
+### Corregido
+
+- **La sincronización con Drive moría con las grabaciones grandes.** Subía y
+  bajaba los ficheros cargándolos enteros en memoria, y `fs.readFile` tiene un
+  tope duro de 2 GiB: una grabación de reunión larga cortaba la sincronización
+  con `File size is greater than 2 GiB`. Por debajo de ese tope tampoco iba
+  fino —el cliente duplicaba el contenido con un `Buffer.concat`, así que un
+  vídeo de 1,5 GB pedía 3 GB de RAM.
+  - Las subidas grandes usan ahora el protocolo «resumable» de Drive, leyendo
+    del disco según se envía; las pequeñas siguen en una sola petición.
+    Las descargas van directas a disco.
+  - Medido con un fichero de 2,5 GiB: **46 MB de memoria al subir y 13 al
+    bajar**, frente a los 2,5 GB de antes.
+  - `fetch` no servía para esto: con un `Content-Length` explícito materializa
+    el cuerpo entero (medido: +1575 MB con un fichero de 1,5 GB), y sin esa
+    cabecera manda la petición troceada, que no es lo que Drive espera. La
+    subida usa el cliente HTTP de Node, que hace las dos cosas.
+- **Un fichero problemático ya no tumba toda la sincronización.** Antes, un
+  error en cualquier fichero abortaba la operación entera y el resto se quedaba
+  sin sincronizar. Ahora se anota y se sigue.
+- **Las cifras del resumen son las reales.** Contaban lo que se había planeado
+  transferir, no lo transferido: con un fallo decían que se subieron diez
+  cuando fueron nueve. El modal muestra además cuáles fallaron y por qué, y el
+  aviso deja de decir «completada» cuando algo se quedó fuera.
+
+---
+
 ## [1.3.3] — 2026-09-08
 
 ### Añadido

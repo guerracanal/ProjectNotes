@@ -177,6 +177,9 @@ export async function POST(request) {
         const toUpload = [];
         const toDownload = [];
         const logs = [];
+        const failed = [];
+        let uploaded = 0;
+        let downloaded = 0;
 
         // Build plan
         for (const relPath of allPaths) {
@@ -262,17 +265,22 @@ export async function POST(request) {
             const driveFile = driveMap[relPath];
             const fullLocalPath = path.join(PROJECTS_DIR, relPath);
 
-            // Ensure parent directory exists
-            await fs.mkdir(path.dirname(fullLocalPath), { recursive: true });
+            try {
+                // Ensure parent directory exists
+                await fs.mkdir(path.dirname(fullLocalPath), { recursive: true });
 
-            const buffer = await downloadFileFromDrive(accessToken, driveFile.id);
-            await fs.writeFile(fullLocalPath, buffer);
+                await downloadFileFromDrive(accessToken, driveFile.id, fullLocalPath);
 
-            // Sync modified date to local file to match drive modifiedTime
-            const remoteTime = new Date(driveFile.modifiedTime);
-            await fs.utimes(fullLocalPath, remoteTime, remoteTime);
+                // Sync modified date to local file to match drive modifiedTime
+                const remoteTime = new Date(driveFile.modifiedTime);
+                await fs.utimes(fullLocalPath, remoteTime, remoteTime);
 
-            logs.push(`[Descarga] ${relPath} (${fileObj.reason})`);
+                logs.push(`[Descarga] ${relPath} (${fileObj.reason})`);
+                downloaded += 1;
+            } catch (error) {
+                failed.push({ path: relPath, direction: 'descarga', message: error.message });
+                logs.push(`[Error] No se pudo descargar ${relPath}: ${error.message}`);
+            }
         }
 
         // Execute uploads
@@ -294,37 +302,50 @@ export async function POST(request) {
                 ? relPath.substring(relPath.lastIndexOf('/') + 1)
                 : relPath;
 
-            const contentBuffer = await fs.readFile(fullLocalPath);
             const mimeType = getMimeType(relPath);
             const existingDriveFile = driveMap[relPath];
 
-            const driveResponse = await uploadFileToDrive(
-                accessToken,
-                fileName,
-                parentDriveId,
-                contentBuffer,
-                mimeType,
-                existingDriveFile ? existingDriveFile.id : null
-            );
+            try {
+                // Se pasa la ruta, no el contenido: los ficheros grandes viajan
+                // en streaming y nunca llegan a estar enteros en memoria.
+                const driveResponse = await uploadFileToDrive(
+                    accessToken,
+                    fileName,
+                    parentDriveId,
+                    fullLocalPath,
+                    mimeType,
+                    existingDriveFile ? existingDriveFile.id : null
+                );
 
-            // Update local file modification date to match what Google Drive returned
-            const updatedRemoteTime = new Date(driveResponse.modifiedTime);
-            await fs.utimes(fullLocalPath, updatedRemoteTime, updatedRemoteTime);
+                // Update local file modification date to match what Google Drive returned
+                const updatedRemoteTime = new Date(driveResponse.modifiedTime);
+                await fs.utimes(fullLocalPath, updatedRemoteTime, updatedRemoteTime);
 
-            logs.push(`[Subida] ${relPath} (${fileObj.reason})`);
+                logs.push(`[Subida] ${relPath} (${fileObj.reason})`);
+                uploaded += 1;
+            } catch (error) {
+                failed.push({ path: relPath, direction: 'subida', message: error.message });
+                logs.push(`[Error] No se pudo subir ${relPath}: ${error.message}`);
+            }
         }
 
         const stats = {
             foldersCreatedLocal: toCreateFolderLocal.length,
             foldersCreatedDrive: toCreateFolderDrive.length,
-            uploaded: toUpload.length,
-            downloaded: toDownload.length,
-            totalProcessed: toCreateFolderLocal.length + toCreateFolderDrive.length + toUpload.length + toDownload.length
+            // Lo que se ha transferido de verdad, no lo que se planeó: con un
+            // fichero fallido los dos números dejan de coincidir, y decir que se
+            // subieron diez cuando solo fueron nueve es lo peor que puede hacer
+            // una sincronización.
+            uploaded,
+            downloaded,
+            failed: failed.length,
+            totalProcessed: toCreateFolderLocal.length + toCreateFolderDrive.length + uploaded + downloaded
         };
 
         return NextResponse.json({
             success: true,
             stats,
+            failed,
             logs
         });
 
