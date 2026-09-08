@@ -53,4 +53,3 @@ next-env.d.ts
 /standalone/
 
 # El zip del paquete standalone, igual que la carpeta: se genera.
-/standalone.zip
