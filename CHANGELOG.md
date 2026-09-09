@@ -7,6 +7,39 @@ y el versionado sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [1.5.0] — 2026-09-09
+
+### Añadido
+
+- **Una reunión sin grabación se ve igual.** La lista de reuniones se armaba a
+  partir de los ficheros de vídeo, así que desde que los vídeos no se
+  sincronizan una reunión desaparecía de la pestaña aunque su transcripción y su
+  resumen siguieran ahí. Ahora hay reunión si hay grabación **o**
+  transcripción.
+- **Portada de reunión.** Donde iría el reproductor, cuando no hay grabación,
+  aparece una portada con el título, la fecha, la duración y lo que hay
+  disponible. Se dibuja en el navegador, no se genera un fichero: sale al
+  momento para todas las reuniones que ya existan, no hay nada que sincronizar
+  ni que rehacer al renombrar, y respeta el tema claro u oscuro.
+- La fecha sale del **nombre** cuando lo lleva (`2026-09-07 10-16-35`, que es
+  como se llaman las grabaciones de Teams o de OBS) y no de la fecha del
+  fichero, que al sincronizar pasa a ser la de la subida. La hora solo se
+  muestra si venía en el nombre: la del fichero no es la de la reunión.
+
+### Corregido
+
+- **El lector no abría una reunión sin vídeo.** Se identificaba por el nombre
+  del fichero de vídeo, que en ese caso no existe. Ahora se identifica por el
+  nombre base.
+- **Una cita del asistente a un vídeo que ya no está abre igualmente la
+  reunión.** El json de la transcripción guarda el nombre del `.mp4`, así que el
+  enlace apuntaba a un fichero ausente; ahora también se busca sin extensión.
+- Sin grabación desaparecen los botones que no se pueden usar («Transcribir»,
+  «Añadir marcas de tiempo»), y pulsar una línea de la transcripción la resalta
+  en vez de no hacer nada.
+
+---
+
 ## [1.4.0] — 2026-09-08
 
 ### Cambiado

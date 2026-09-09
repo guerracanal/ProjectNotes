@@ -33,3 +33,12 @@ node tests/browser/tareas.test.mjs
 `tareas.test.mjs` **escribe en `tasks.md`** del proyecto que se le indique.
 Añade una tarea y la marca; no borra nada, pero el fichero queda modificado.
 Si no quieres tocar tu proyecto de ejemplo, apunta `PROJECT_DIR` a una copia.
+
+## Reuniones sin grabación
+
+`reuniones.test.mjs` comprueba que una reunión aparece con su transcripción
+aunque falte el vídeo, que la portada ocupa el sitio del reproductor y que una
+cita del asistente al `.mp4` ausente sigue abriendo el lector. La prueba escribe ella misma
+la transcripción de una reunión sin grabación en `PROJECT_DIR` y la borra al
+terminar: `projects_data` está en `.gitignore`, así que un fichero de ejemplo
+dejado ahí no viajaría con el repositorio.

@@ -94,6 +94,7 @@ src/
   contexts/               ← Theme, Toast, Settings, Sidebar
   lib/
     paths.js              ← Dónde vive todo en disco. Ninguna otra usa process.cwd()
+    meetings.js           ← Qué cuenta como reunión, su fecha y su título
     fs-utils.js           ← ÚNICA puerta al disco. Todo pasa por getSafePath()
     knowledge/            ← Troceado, BM25, embeddings, recuperación, prompt
       providers.js        ← Un adaptador por proveedor de chat, misma interfaz
@@ -363,6 +364,10 @@ de cometer aquí (por eso existe `lib/file-kinds.js` en paralelo a `fs-utils.js`
   el script. Por eso los dos scripts llaman a `_force_utf8_output()` nada más
   importar, y `run-script.js` pasa `PYTHONIOENCODING=utf-8`. Si añades un
   script de Python, copia ese bloque.
+- **Una reunión no es un fichero de vídeo.** Es una grabación *o* una
+  transcripción: los vídeos no se sincronizan, así que en otro equipo solo está
+  la transcripción. Nada debe identificar una reunión por el nombre del `.mp4`
+  —usa `baseName`—, y `collectMeetings` en `lib/meetings.js` es quien decide.
 - **Nada de leer un fichero de usuario entero en memoria.** Aquí hay vídeos de
   varios GB. `fs.readFile` revienta pasados 2 GiB (`ERR_FS_FILE_TOO_LARGE`) y
   antes de eso ya se come la RAM. Y ojo con `fetch`: con `Content-Length`

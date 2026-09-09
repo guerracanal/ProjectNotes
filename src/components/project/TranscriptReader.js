@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../ui/Icon';
+import MeetingPoster from './MeetingPoster';
 import { useToast } from '@/contexts/ToastContext';
 import { findSegmentAt, formatTime, parseTranscript } from '@/lib/transcript';
+import { meetingTitle } from '@/lib/meetings';
 import { normalize } from '@/lib/knowledge/tokenizer';
 
 function encodePath(path) {
@@ -62,7 +64,9 @@ export default function TranscriptReader({ projectPath, meeting, startAt = null,
   const [query, setQuery] = useState('');
 
   const encodedProject = encodePath(projectPath);
-  const mediaSrc = `/api/projects/${encodedProject}/${encodeURIComponent(meeting.name)}?type=file`;
+  const mediaSrc = meeting.name
+    ? `/api/projects/${encodedProject}/${encodeURIComponent(meeting.name)}?type=file`
+    : null;
 
   useEffect(() => {
     followRef.current = follow;
@@ -111,7 +115,12 @@ export default function TranscriptReader({ projectPath, meeting, startAt = null,
 
   const seekTo = useCallback((seconds) => {
     const media = mediaRef.current;
-    if (!media) return;
+    if (!media) {
+      // Sin grabación no hay a dónde saltar, pero marcar la línea pulsada sigue
+      // sirviendo para no perder el sitio en una transcripción larga.
+      if (segments?.length) setActiveIndex(findSegmentAt(segments, seconds));
+      return;
+    }
     media.currentTime = seconds;
     // Re-enable following: a deliberate jump means the reader wants to be
     // taken along again.
@@ -119,7 +128,7 @@ export default function TranscriptReader({ projectPath, meeting, startAt = null,
     media.play().catch(() => {
       /* autoplay blocked — the seek still happened */
     });
-  }, []);
+  }, [segments]);
 
   // Honour a deep link like ?t=847 once the media knows its duration.
   const appliedStart = useRef(false);
@@ -216,6 +225,9 @@ export default function TranscriptReader({ projectPath, meeting, startAt = null,
   };
 
   const MediaTag = meeting.kind === 'audio' ? 'audio' : 'video';
+  // Sin grabación se puede leer y buscar, pero no saltar a un momento: no hay
+  // a dónde saltar.
+  const hasMedia = Boolean(meeting.name);
 
   return (
     <div className="reader">
@@ -224,7 +236,7 @@ export default function TranscriptReader({ projectPath, meeting, startAt = null,
           <Icon name="chevron-left" size={17} />
         </button>
         <div className="reader-title">
-          <h2 className="truncate">{meeting.baseName}</h2>
+          <h2 className="truncate" title={meeting.baseName}>{meetingTitle(meeting.baseName)}</h2>
           <span className="reader-meta">
             {transcript
               ? `${transcript.segments.length} fragmentos · ${formatTime(transcript.duration)}`
@@ -235,23 +247,31 @@ export default function TranscriptReader({ projectPath, meeting, startAt = null,
 
       <div className={`reader-body ${meeting.kind === 'audio' ? 'audio' : ''}`}>
         <div className="reader-media">
-          <MediaTag
-            ref={mediaRef}
-            controls
-            preload="metadata"
-            playsInline
-            onTimeUpdate={syncActiveSegment}
-            onSeeked={syncActiveSegment}
-            className={meeting.kind === 'audio' ? 'audio-player' : 'video-player'}
-          >
-            <source src={mediaSrc} />
-            Tu navegador no puede reproducir este fichero.
-          </MediaTag>
+          {hasMedia ? (
+            <MediaTag
+              ref={mediaRef}
+              controls
+              preload="metadata"
+              playsInline
+              onTimeUpdate={syncActiveSegment}
+              onSeeked={syncActiveSegment}
+              className={meeting.kind === 'audio' ? 'audio-player' : 'video-player'}
+            >
+              <source src={mediaSrc} />
+              Tu navegador no puede reproducir este fichero.
+            </MediaTag>
+          ) : (
+            <MeetingPoster meeting={meeting} compact />
+          )}
 
           {transcript && (
             <div className="reader-hint">
               <Icon name="info" size={13} />
-              <span>Pulsa cualquier línea para saltar a ese momento.</span>
+              <span>
+                {hasMedia
+                  ? 'Pulsa cualquier línea para saltar a ese momento.'
+                  : 'Cada línea lleva el minuto en que se dijo. La grabación no está aquí, así que no hay a dónde saltar.'}
+              </span>
             </div>
           )}
         </div>

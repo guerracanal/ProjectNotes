@@ -8,16 +8,45 @@ import Icon from '../ui/Icon';
 import EmptyState from '../ui/EmptyState';
 import TranscriptModal from '../TranscriptModal';
 import TranscriptReader from './TranscriptReader';
+import MeetingPoster from './MeetingPoster';
 import { parseTime } from '@/lib/transcript';
+import { meetingTitle } from '@/lib/meetings';
 
 function encodePath(path) {
   return path.split('/').map(encodeURIComponent).join('/');
 }
 
+/**
+ * La reunión que debe abrir el lector.
+ *
+ * El enlace profundo lleva el nombre del fichero de vídeo, porque es lo que
+ * guarda el json de la transcripción. Ese vídeo puede no estar —no se
+ * sincroniza—, así que además del nombre exacto se prueba sin extensión: una
+ * cita a «reunion.mp4» tiene que abrir la reunión «reunion» aunque el vídeo se
+ * haya quedado en el otro equipo.
+ */
+function findMeeting(meetings, openedBase, mediaParam) {
+  if (!meetings?.length) return null;
+  if (openedBase) return meetings.find((m) => m.baseName === openedBase) || null;
+  if (!mediaParam) return null;
+
+  const sinExtension = mediaParam.replace(/\.[^./\\]+$/, '');
+  return (
+    meetings.find((m) => m.name === mediaParam) ||
+    meetings.find((m) => m.baseName === mediaParam || m.baseName === sinExtension) ||
+    null
+  );
+}
+
 /** One recording, plus its transcript and summary if they exist. */
 function MeetingCard({ meeting, projectPath, onRun, onOpenReader }) {
   const [expanded, setExpanded] = useState(Boolean(meeting.summaryContent));
-  const src = `/api/projects/${encodePath(projectPath)}/${encodeURIComponent(meeting.name)}?type=file`;
+  // Sin grabación —lo normal desde que los vídeos no se sincronizan— el hueco
+  // del reproductor lo ocupa la portada.
+  const hasMedia = Boolean(meeting.name);
+  const src = hasMedia
+    ? `/api/projects/${encodePath(projectPath)}/${encodeURIComponent(meeting.name)}?type=file`
+    : null;
   const MediaTag = meeting.kind === 'audio' ? 'audio' : 'video';
 
   return (
@@ -25,17 +54,19 @@ function MeetingCard({ meeting, projectPath, onRun, onOpenReader }) {
       <header className="m-head">
         <div className="m-title">
           <span className="m-icon">
-            <Icon name={meeting.kind === 'audio' ? 'mic' : 'video'} size={17} />
+            <Icon name={meeting.kind === 'audio' ? 'mic' : hasMedia ? 'video' : 'file-text'} size={17} />
           </span>
           <div className="min-w-0">
-            <h3 className="truncate">{meeting.baseName}</h3>
-            <span className="m-date">
-              {new Date(meeting.mtime).toLocaleDateString('es-ES', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-              })}
-            </span>
+            <h3 className="truncate" title={meeting.baseName}>{meetingTitle(meeting.baseName)}</h3>
+            {meeting.date && (
+              <span className="m-date">
+                {new Date(meeting.date).toLocaleDateString('es-ES', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </span>
+            )}
           </div>
         </div>
 
@@ -64,10 +95,14 @@ function MeetingCard({ meeting, projectPath, onRun, onOpenReader }) {
 
       <div className="m-body">
         <div className="m-media">
-          <MediaTag controls preload="metadata" playsInline className={meeting.kind === 'audio' ? 'audio' : 'video'}>
-            <source src={src} />
-            Tu navegador no puede reproducir este fichero.
-          </MediaTag>
+          {hasMedia ? (
+            <MediaTag controls preload="metadata" playsInline className={meeting.kind === 'audio' ? 'audio' : 'video'}>
+              <source src={src} />
+              Tu navegador no puede reproducir este fichero.
+            </MediaTag>
+          ) : (
+            <MeetingPoster meeting={meeting} />
+          )}
 
           <div className="m-actions">
             {meeting.transcriptPath ? (
@@ -82,7 +117,7 @@ function MeetingCard({ meeting, projectPath, onRun, onOpenReader }) {
                     Generar resumen
                   </button>
                 )}
-                {!meeting.segmentsPath && (
+                {!meeting.segmentsPath && hasMedia && (
                   <button
                     className="btn btn-secondary btn-sm"
                     onClick={() => onRun(meeting, 'transcript')}
@@ -93,12 +128,12 @@ function MeetingCard({ meeting, projectPath, onRun, onOpenReader }) {
                   </button>
                 )}
               </>
-            ) : (
+            ) : hasMedia ? (
               <button className="btn btn-primary btn-sm" onClick={() => onRun(meeting, 'transcript')}>
                 <Icon name="mic" size={14} />
                 Transcribir
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -223,9 +258,12 @@ export default function MeetingsTab({ projectPath, meetings }) {
   const searchParams = useSearchParams();
 
   const [modal, setModal] = useState(null);
-  // Which recording the reader is showing, when it was opened from the list.
+  // Which meeting the reader is showing, when it was opened from the list.
   // A deep link opens it through the URL instead, so this stays null there.
-  const [openedName, setOpenedName] = useState(null);
+  //
+  // Se identifica por el nombre base y no por el del fichero de vídeo: sin
+  // grabación no hay nombre de fichero, y el lector no llegaba a abrirse.
+  const [openedBase, setOpenedBase] = useState(null);
 
   // Deep link: ?tab=meetings&media=kickoff.mp4&t=847 opens the reader at that
   // moment. This is what the assistant's citations link to.
@@ -235,16 +273,13 @@ export default function MeetingsTab({ projectPath, meetings }) {
   // Derived rather than mirrored into state: the URL is the source of truth,
   // and syncing it through an effect would cost an extra render on every
   // citation followed.
-  const readerName = openedName ?? mediaParam;
-  const readerMeeting = readerName
-    ? meetings?.find((m) => m.name === readerName) || null
-    : null;
+  const readerMeeting = findMeeting(meetings, openedBase, mediaParam);
   // Only honour ?t= when the reader was opened by the URL; opening from the
   // list should start at the beginning even if a stale t= is still around.
-  const readerStartAt = openedName ? null : parseTime(timeParam);
+  const readerStartAt = openedBase ? null : parseTime(timeParam);
 
   const closeReader = useCallback(() => {
-    setOpenedName(null);
+    setOpenedBase(null);
     // Drop the deep-link params, or the reader would reopen on refresh.
     if (mediaParam || timeParam) {
       router.replace(`/project/${encodePath(projectPath)}?tab=meetings`, { scroll: false });
@@ -255,8 +290,8 @@ export default function MeetingsTab({ projectPath, meetings }) {
     return (
       <EmptyState
         icon="video"
-        title="Sin grabaciones"
-        description="Coloca ficheros de vídeo (.mp4, .webm, .mkv) o de audio (.mp3, .m4a, .wav) en la carpeta del proyecto y aparecerán aquí, listos para transcribir con Whisper y resumir."
+        title="Sin reuniones"
+        description="Coloca ficheros de vídeo (.mp4, .webm, .mkv) o de audio (.mp3, .m4a, .wav) en la carpeta del proyecto y aparecerán aquí, listos para transcribir con Whisper y resumir. Una transcripción sin su grabación también cuenta como reunión."
       />
     );
   }
@@ -264,7 +299,7 @@ export default function MeetingsTab({ projectPath, meetings }) {
   if (readerMeeting) {
     return (
       <TranscriptReader
-        key={readerMeeting.path}
+        key={readerMeeting.baseName}
         projectPath={projectPath}
         meeting={readerMeeting}
         startAt={readerStartAt}
@@ -277,11 +312,11 @@ export default function MeetingsTab({ projectPath, meetings }) {
     <div className="meetings">
       {meetings.map((meeting) => (
         <MeetingCard
-          key={meeting.path}
+          key={meeting.baseName}
           meeting={meeting}
           projectPath={projectPath}
           onRun={(m, mode) => setModal({ meeting: m, mode })}
-          onOpenReader={(m) => setOpenedName(m.name)}
+          onOpenReader={(m) => setOpenedBase(m.baseName)}
         />
       ))}
 

@@ -1,10 +1,6 @@
 import { notFound } from 'next/navigation';
-import {
-    AUDIO_EXTENSIONS,
-    VIDEO_EXTENSIONS,
-    getDirectoryContent,
-    getFileContent,
-} from '@/lib/fs-utils';
+import { getDirectoryContent, getFileContent } from '@/lib/fs-utils';
+import { collectMeetings, meetingDateFromName } from '@/lib/meetings';
 import ProjectView from '@/components/project/ProjectView';
 
 export async function generateMetadata({ params }) {
@@ -14,6 +10,23 @@ export async function generateMetadata({ params }) {
 }
 
 /** Read a file, returning '' rather than throwing when it is absent. */
+/**
+ * La duración de la reunión, del json de marcas de tiempo.
+ *
+ * Es lo único que se saca de ese fichero aquí: sirve para que la portada de una
+ * reunión sin vídeo diga cuánto duró, que es la primera pregunta al mirarla.
+ */
+async function readDuration(path) {
+    try {
+        const raw = await getFileContent(path);
+        const seconds = JSON.parse(raw || '{}').duration;
+        return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+    } catch {
+        // Un json a medio escribir no debe tumbar la página del proyecto.
+        return null;
+    }
+}
+
 async function readOptional(path) {
     try {
         return (await getFileContent(path)) || '';
@@ -48,39 +61,45 @@ export default async function ProjectPage({ params }) {
         byName.has('links.md') ? readOptional(`${projectPath}/links.md`) : '',
     ]);
 
-    // A "meeting" is a recording plus whatever transcript and summary sit
-    // beside it. Audio counts too — a voice note is a meeting with one person.
-    const recordings = files.filter((f) => {
-        const lower = f.name.toLowerCase();
-        return [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS].some((ext) => lower.endsWith(ext));
-    });
-
+    // Una reunión es una grabación **o** una transcripción, con lo que tenga al
+    // lado. Antes se armaba solo desde el fichero de vídeo, así que sin la
+    // grabación —que ya no se sincroniza con Drive— desaparecía de la pestaña
+    // aunque su transcripción y su resumen siguieran ahí.
     const meetings = await Promise.all(
-        recordings.map(async (media) => {
-            const baseName = media.name.slice(0, media.name.lastIndexOf('.'));
-            const transcript = byName.get(`${baseName}_transcripcion.txt`);
-            const segments = byName.get(`${baseName}_transcripcion.json`);
-            const summary = byName.get(`${baseName}_transcripcion_resumen.txt`);
-            const isAudio = AUDIO_EXTENSIONS.some((ext) => media.name.toLowerCase().endsWith(ext));
+        collectMeetings(files).map(async (grupo) => {
+            // La fecha del fichero deja de ser fiable en cuanto se sincroniza:
+            // pasa a ser la de la subida. El nombre suele llevar la de verdad.
+            const fromName = meetingDateFromName(grupo.baseName);
+            const anyFile = grupo.media || grupo.transcript || grupo.segments || grupo.summary;
 
             return {
-                name: media.name,
-                baseName,
-                path: media.path,
-                mtime: media.mtime,
-                kind: isAudio ? 'audio' : 'video',
-                transcriptPath: transcript ? transcript.path : null,
+                name: grupo.media ? grupo.media.name : null,
+                baseName: grupo.baseName,
+                path: grupo.media ? grupo.media.path : null,
+                mtime: anyFile ? anyFile.mtime : null,
+                date: (fromName || (anyFile ? new Date(anyFile.mtime) : null))?.toISOString() ?? null,
+                dateFromName: Boolean(fromName),
+                kind: grupo.kind,
+                transcriptPath: grupo.transcript ? grupo.transcript.path : null,
                 // Present only once the recording has been transcribed by a
                 // version of the script that emits timestamps.
-                segmentsPath: segments ? segments.path : null,
-                summaryContent: summary
-                    ? await readOptional(`${projectPath}/${summary.name}`)
+                segmentsPath: grupo.segments ? grupo.segments.path : null,
+                duration: grupo.segments
+                    ? await readDuration(`${projectPath}/${grupo.segments.name}`)
+                    : null,
+                summaryContent: grupo.summary
+                    ? await readOptional(`${projectPath}/${grupo.summary.name}`)
                     : '',
             };
         })
     );
 
-    meetings.sort((a, b) => b.baseName.localeCompare(a.baseName));
+    // Lo más reciente primero. Con fecha reconocida se ordena por ella; si no,
+    // por nombre, que es lo que se hacía antes.
+    meetings.sort((a, b) => {
+        if (a.date && b.date && a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.baseName.localeCompare(a.baseName);
+    });
 
     return (
         <ProjectView

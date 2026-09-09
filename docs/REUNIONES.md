@@ -144,3 +144,28 @@ Whisper los acepta directamente, sin pasar por el vídeo.
   servidor los pierde, aunque el fichero resultante no se pierde.
 - **Progreso real**. Whisper puede informar del porcentaje; hoy solo se muestra
   su salida de consola.
+
+
+## Reuniones sin grabación
+
+Los vídeos no se sincronizan con Google Drive, así que en un segundo equipo
+suele haber transcripción y resumen pero no el `.mp4`. Eso no esconde la
+reunión: **basta con que exista la transcripción** para que aparezca en la
+pestaña, con su resumen, su buscador y sus marcas de tiempo.
+
+Donde iría el reproductor aparece una portada con el título, la fecha, la
+duración y lo que hay disponible. No es un fichero: se dibuja al vuelo, así que
+sale sola para todas las reuniones que ya tengas, sin generar nada ni volver a
+sincronizar.
+
+Lo único que no se puede hacer sin la grabación es saltar a un momento —no hay
+a dónde saltar— y volver a transcribir. Pulsar una línea la resalta, para no
+perder el sitio en una transcripción larga.
+
+### De dónde sale la fecha
+
+Del nombre, cuando lo lleva: `2026-09-07 10-16-35`, `07-09-2026`, `20260907`.
+Es a propósito. La fecha de modificación del fichero deja de ser la de la
+reunión en cuanto se sincroniza —pasa a ser la de la subida—, y las grabaciones
+de Teams y OBS ya se llaman por su fecha. Si el nombre no lleva ninguna, se usa
+la del fichero, y entonces no se muestra la hora: sería inventarla.
